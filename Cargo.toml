@@ -1,0 +1,20 @@
+[package]
+name = "saga_coordinator"
+version = "0.1.0"
+authors = ["root"]
+
+[lib]
+name = "saga_coordinator_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "saga_coordinator_runner"
+path = "src/main.rs"
+
+[dependencies]
+env_logger = "*"
+failure = "*"
+futures-await = "*"
+futures-cpupool = "*"
+tokio-core = "*"
+hyper = "*"
