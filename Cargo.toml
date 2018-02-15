@@ -16,5 +16,10 @@ env_logger = "*"
 failure = "*"
 futures-await = "*"
 futures-cpupool = "*"
-tokio-core = "*"
 hyper = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+stq_router = { git = "ssh://git@github.com/StoriqaTeam/libstqbackend" }
+stq_http = { git = "ssh://git@github.com/StoriqaTeam/libstqbackend" }
+tokio-core = "*"
