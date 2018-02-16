@@ -1,5 +1,3 @@
-use stq_http;
-
 use stq_router::service::Service as StqService;
 
 #[derive(Clone, Debug)]

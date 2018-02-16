@@ -16,6 +16,7 @@ extern crate serde_json;
 extern crate tokio_core;
 
 mod config;
+mod controller;
 mod create_account;
 
 use stq_http::Client as HttpClient;
@@ -57,18 +58,20 @@ impl Service for SagaService {
                         .with_status(StatusCode::NotAcceptable)
                         .with_body("No body"),
                 )),
-                Some(s) => Box::new(
-                    create_account::op(self.http_client.clone(), self.config.clone(), s.to_string())
-                        .map(|s| {
-                            Response::new()
-                                .with_status(StatusCode::Ok)
-                                .with_body(s.as_bytes())
-                        })
-                        .or_else(|e| {
-                            Ok(Response::new()
-                                .with_status(StatusCode::InternalServerError)
-                                .with_body(&e.to_string()))
-                        }),
+                Some(body) => Box::new(
+                    stq_http::request_util::read_body(*body.clone()).and_then(|s| {
+                        create_account::op(self.http_client.clone(), self.config.clone(), s.to_string())
+                            .map(|s| {
+                                Response::new()
+                                    .with_status(StatusCode::Ok)
+                                    .with_body(s.as_bytes())
+                            })
+                            .or_else(|e| {
+                                Ok(Response::new()
+                                    .with_status(StatusCode::InternalServerError)
+                                    .with_body(&e.to_string()))
+                            })
+                    }),
                 ),
             },
             _ => Box::new(futures::future::ok(

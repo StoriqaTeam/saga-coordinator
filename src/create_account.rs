@@ -1,14 +1,10 @@
 use config;
 
-use stq_router;
-
 use failure;
-use futures;
-use hyper;
 use serde_json;
 
 use futures::prelude::*;
-use hyper::{Method, Uri};
+use hyper::Method;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
