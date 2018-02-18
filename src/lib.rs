@@ -20,6 +20,9 @@ mod controller;
 mod create_account;
 
 use stq_http::Client as HttpClient;
+use stq_http::controller::{Application, Controller};
+use stq_http::errors::ControllerError;
+use stq_http::request_util::ControllerFuture;
 use stq_router::model::Model as StqModel;
 use stq_router::role::Role as StqRole;
 use stq_router::role::UserRole as StqUserRole;
@@ -36,47 +39,28 @@ use std::sync::Arc;
 use std::process;
 use tokio_core::reactor::Core;
 
-pub struct SagaService {
+pub struct ControllerImpl {
     pub config: config::Config,
     pub http_client: Arc<HttpClient>,
 }
 
-impl Service for SagaService {
-    // boilerplate hooking up hyper's server types
-    type Request = Request;
-    type Response = Response;
-    type Error = failure::Error;
-    // The future representing the eventual Response your call will
-    // resolve to. This can change to whatever Future you need.
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
-
-    fn call(&self, req: Request) -> Self::Future {
+impl Controller for ControllerImpl {
+    fn call(&self, req: Request) -> ControllerFuture {
         match (req.method(), req.path()) {
             (&Method::Post, "create_account") => match req.body_ref() {
-                None => Box::new(futures::future::ok(
-                    Response::new()
-                        .with_status(StatusCode::NotAcceptable)
-                        .with_body("No body"),
-                )),
+                None => Box::new(futures::future::err(ControllerError::Parse(
+                    "No body".to_string(),
+                ))),
                 Some(body) => Box::new(
                     stq_http::request_util::read_body(*body.clone()).and_then(|s| {
                         create_account::op(self.http_client.clone(), self.config.clone(), s.to_string())
-                            .map(|s| {
-                                Response::new()
-                                    .with_status(StatusCode::Ok)
-                                    .with_body(s.as_bytes())
-                            })
-                            .or_else(|e| {
-                                Ok(Response::new()
-                                    .with_status(StatusCode::InternalServerError)
-                                    .with_body(&e.to_string()))
-                            })
+                            .map_err(|e| ControllerError::InternalServerError(e.to_string()))
                     }),
                 ),
             },
-            _ => Box::new(futures::future::ok(
-                Response::new().with_status(StatusCode::NotFound),
-            )),
+            _ => Box::new(futures::future::err(futures::future::err(
+                ControllerError::NotFound,
+            ))),
         }
     }
 }
