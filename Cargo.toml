@@ -17,9 +17,11 @@ failure = "*"
 futures-await = "*"
 futures-cpupool = "*"
 hyper = "*"
+regex = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-stq_router = { git = "ssh://git@github.com/StoriqaTeam/libstqbackend" }
-stq_http = { git = "ssh://git@github.com/StoriqaTeam/libstqbackend", branch = "wip" }
+stq_routes = { path = "vendor/libstqbackend/routes" }
+stq_router = { path = "vendor/libstqbackend/router" }
+stq_http = { path = "vendor/libstqbackend/http" }
 tokio-core = "*"
