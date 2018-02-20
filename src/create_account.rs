@@ -8,12 +8,12 @@ use hyper::Method;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use stq_http::Client as HttpClient;
-use stq_router::model::Model as StqModel;
-use stq_router::role::Role as StqRole;
-use stq_router::role::UserRole as StqUserRole;
-use stq_router::role::NewUserRole as StqNewUserRole;
-use stq_router::service::Service as StqService;
+use stq_http::client::Client as HttpClient;
+use stq_routes::model::Model as StqModel;
+use stq_routes::role::Role as StqRole;
+use stq_routes::role::UserRole as StqUserRole;
+use stq_routes::role::NewUserRole as StqNewUserRole;
+use stq_routes::service::Service as StqService;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -72,10 +72,10 @@ fn op_happy(
     input: InputView,
     body: String,
 ) -> Result<String, failure::Error> {
-    let mut log = log.lock().unwrap();
-
     // Create account
-    log.push(OperationStage::AccountCreationStart);
+    log.lock()
+        .unwrap()
+        .push(OperationStage::AccountCreationStart);
     let res = await!(http_client.handle().request::<User>(
         Method::Post,
         format!(
@@ -86,10 +86,12 @@ fn op_happy(
         Some(body),
         None
     )).map_err(|e| format_err!("{}", e))?;
-    log.push(OperationStage::AccountCreationComplete);
+    log.lock()
+        .unwrap()
+        .push(OperationStage::AccountCreationComplete);
 
     // Set roles in users
-    log.push(OperationStage::UsersRoleSetStart);
+    log.lock().unwrap().push(OperationStage::UsersRoleSetStart);
     let user_role = StqNewUserRole {
         user_id: res.id,
         role: StqRole::User,
@@ -109,7 +111,9 @@ fn op_happy(
         Some(body),
         None
     )).map_err(|e| format_err!("{}", e))?;
-    log.push(OperationStage::UsersRoleSetComplete);
+    log.lock()
+        .unwrap()
+        .push(OperationStage::UsersRoleSetComplete);
 
     /*
     // Set roles in stores
@@ -162,10 +166,10 @@ fn op_revert(
 
 #[async]
 pub fn op(http_client: Arc<HttpClient>, config: config::Config, body: String) -> Result<String, failure::Error> {
-    let input = serde_json::from_str(&body)?;
+    let input = serde_json::from_str::<InputView>(&body)?;
 
     let log = Arc::new(Mutex::new(OperationLog::new()));
-    let happy_path = op_happy(http_client, log.clone(), config, input, body);
+    let happy_path = op_happy(http_client, log.clone(), config, input.clone(), body);
 
     match await!(happy_path) {
         Err(e) => {

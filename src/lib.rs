@@ -2,6 +2,7 @@
 
 extern crate stq_http;
 extern crate stq_router;
+extern crate stq_routes;
 
 extern crate env_logger;
 #[macro_use]
@@ -19,15 +20,15 @@ mod config;
 mod controller;
 mod create_account;
 
-use stq_http::Client as HttpClient;
+use stq_http::client::Client as HttpClient;
 use stq_http::controller::{Application, Controller};
 use stq_http::errors::ControllerError;
-use stq_http::request_util::ControllerFuture;
-use stq_router::model::Model as StqModel;
-use stq_router::role::Role as StqRole;
-use stq_router::role::UserRole as StqUserRole;
-use stq_router::role::NewUserRole as StqNewUserRole;
-use stq_router::service::Service as StqService;
+use stq_http::request_util::{read_body, ControllerFuture};
+use stq_routes::model::Model as StqModel;
+use stq_routes::role::Role as StqRole;
+use stq_routes::role::UserRole as StqUserRole;
+use stq_routes::role::NewUserRole as StqNewUserRole;
+use stq_routes::service::Service as StqService;
 
 use futures::prelude::*;
 use futures_cpupool::CpuPool;
@@ -47,20 +48,18 @@ pub struct ControllerImpl {
 impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         match (req.method(), req.path()) {
-            (&Method::Post, "create_account") => match req.body_ref() {
-                None => Box::new(futures::future::err(ControllerError::Parse(
-                    "No body".to_string(),
-                ))),
-                Some(body) => Box::new(
-                    stq_http::request_util::read_body(*body.clone()).and_then(|s| {
-                        create_account::op(self.http_client.clone(), self.config.clone(), s.to_string())
-                            .map_err(|e| ControllerError::InternalServerError(e.to_string()))
+            (&Method::Post, "create_account") => Box::new(
+                read_body(req.body())
+                    .map_err(|e| ControllerError::UnprocessableEntity(e.into()))
+                    .and_then({
+                        let http_client = self.http_client.clone();
+                        let config = self.config.clone();
+                        move |s| {
+                            create_account::op(http_client.clone(), config.clone(), s).map_err(|e| ControllerError::InternalServerError(e))
+                        }
                     }),
-                ),
-            },
-            _ => Box::new(futures::future::err(futures::future::err(
-                ControllerError::NotFound,
-            ))),
+            ),
+            _ => Box::new(futures::future::err(ControllerError::NotFound)),
         }
     }
 }
@@ -70,25 +69,33 @@ pub fn start_server(config: config::Config) {
     // Prepare logger
     env_logger::init();
 
-    let address = "127.0.0.1:8080";
+    let address = "127.0.0.1:8080".parse().unwrap();
     let thread_count = 8;
 
     // Prepare reactor
-    let mut core = Core::new().expect("Unexpected error creating event loop core");
+    let core = Core::new().expect("Unexpected error creating event loop core");
     let handle = Arc::new(core.handle());
 
     let serve = Http::new()
-        .serve_addr_handle(&address, &handle, move || {
-            // Prepare CPU pool
-            let cpu_pool = CpuPool::new(thread_count);
+        .serve_addr_handle(&address, &*handle, {
+            let handle = handle.clone();
+            move || {
+                // Prepare application
+                let app = Application {
+                    controller: Box::new(ControllerImpl {
+                        config: config.clone(),
+                        http_client: Arc::new(HttpClient::new(
+                            &stq_http::client::Config {
+                                http_client_retries: 3,
+                                http_client_buffer_size: 10,
+                            },
+                            &(*handle).clone(),
+                        )),
+                    }),
+                };
 
-            // Prepare application
-            let app = SagaService {
-                config,
-                http_client: Arc::new(HttpClient::new()),
-            };
-
-            Ok(app)
+                Ok(app)
+            }
         })
         .unwrap_or_else(|reason| {
             eprintln!("Http Server Initialization Error: {}", reason);

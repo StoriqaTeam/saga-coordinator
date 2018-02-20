@@ -1,4 +1,4 @@
-use stq_router::service::Service as StqService;
+use stq_routes::service::Service as StqService;
 
 #[derive(Clone, Debug)]
 pub struct Config {
