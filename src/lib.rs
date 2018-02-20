@@ -16,7 +16,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 
-mod config;
+pub mod config;
 mod controller;
 mod create_account;
 

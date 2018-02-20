@@ -169,7 +169,7 @@ pub fn op(http_client: Arc<HttpClient>, config: config::Config, body: String) ->
     let input = serde_json::from_str::<InputView>(&body)?;
 
     let log = Arc::new(Mutex::new(OperationLog::new()));
-    let happy_path = op_happy(http_client, log.clone(), config, input.clone(), body);
+    let happy_path = op_happy(http_client.clone(), log.clone(), config.clone(), input.clone(), body);
 
     match await!(happy_path) {
         Err(e) => {
@@ -177,7 +177,7 @@ pub fn op(http_client: Arc<HttpClient>, config: config::Config, body: String) ->
                 "Failed to create user {} (error {}). Reverting.",
                 &input.email, &e
             );
-            let revert_path = op_revert(http_client, *log.lock().unwrap(), config, input);
+            let revert_path = op_revert(http_client.clone(), Arc::try_unwrap(log).unwrap().into_inner().unwrap(), config.clone(), input);
 
             await!(revert_path)?;
 
