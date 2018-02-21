@@ -18,7 +18,7 @@ extern crate tokio_core;
 
 pub mod config;
 mod controller;
-mod create_account;
+mod ops;
 
 use stq_http::client::Client as HttpClient;
 use stq_http::controller::{Application, Controller};
@@ -55,7 +55,7 @@ impl Controller for ControllerImpl {
                         let http_client = self.http_client.clone();
                         let config = self.config.clone();
                         move |s| {
-                            create_account::op(http_client.clone(), config.clone(), s).map_err(|e| ControllerError::InternalServerError(e))
+                            ops::account::create(http_client.clone(), config.clone(), s).map_err(|e| ControllerError::InternalServerError(e))
                         }
                     }),
             ),

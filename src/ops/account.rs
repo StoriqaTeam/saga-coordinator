@@ -65,7 +65,7 @@ pub struct InputView {
 
 // Contains happy path for account creation
 #[async]
-fn op_happy(
+fn create_happy(
     http_client: Arc<HttpClient>,
     log: Arc<Mutex<OperationLog>>,
     config: config::Config,
@@ -131,7 +131,7 @@ fn op_happy(
 
 // Contains reversal of account creation
 #[async]
-fn op_revert(
+fn create_revert(
     http_client: Arc<HttpClient>,
     operation_log: OperationLog,
     config: config::Config,
@@ -139,6 +139,7 @@ fn op_revert(
 ) -> Result<(), failure::Error> {
     if operation_log.contains(&OperationStage::UsersRoleSetStart) {}
 
+    /*
     if operation_log.contains(&OperationStage::StoreRoleSetStart) {
         let fut = http_client.handle().request::<String>(
             Method::Post,
@@ -149,27 +150,36 @@ fn op_revert(
 
         await!(fut);
     }
+    */
 
     if operation_log.contains(&OperationStage::AccountCreationStart) {
-        let fut = http_client.handle().request::<String>(
-            Method::Post,
-            format!("{}/remove_user", config.users_addr),
-            Some(format!("user_id=xxx")),
+        await!(http_client.handle().request::<StqUserRole>(
+            Method::Delete,
+            format!(
+                "{}/{}",
+                config.service_url(StqService::Users),
+                StqModel::UserRoles.to_url()
+            ),
             None,
-        );
-
-        await!(fut);
+            None
+        ))?;
     }
 
     Ok(())
 }
 
 #[async]
-pub fn op(http_client: Arc<HttpClient>, config: config::Config, body: String) -> Result<String, failure::Error> {
+pub fn create(http_client: Arc<HttpClient>, config: config::Config, body: String) -> Result<String, failure::Error> {
     let input = serde_json::from_str::<InputView>(&body)?;
 
     let log = Arc::new(Mutex::new(OperationLog::new()));
-    let happy_path = op_happy(http_client.clone(), log.clone(), config.clone(), input.clone(), body);
+    let happy_path = create_happy(
+        http_client.clone(),
+        log.clone(),
+        config.clone(),
+        input.clone(),
+        body,
+    );
 
     match await!(happy_path) {
         Err(e) => {
@@ -177,7 +187,12 @@ pub fn op(http_client: Arc<HttpClient>, config: config::Config, body: String) ->
                 "Failed to create user {} (error {}). Reverting.",
                 &input.email, &e
             );
-            let revert_path = op_revert(http_client.clone(), Arc::try_unwrap(log).unwrap().into_inner().unwrap(), config.clone(), input);
+            let revert_path = create_revert(
+                http_client.clone(),
+                Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
+                config.clone(),
+                input,
+            );
 
             await!(revert_path)?;
 
