@@ -56,7 +56,8 @@ impl Controller for ControllerImpl {
                         let http_client = self.http_client.clone();
                         let config = self.config.clone();
                         move |s| {
-                            ops::account::create(http_client.clone(), config.clone(), s).map_err(|e| ControllerError::InternalServerError(e))
+                            ops::account::create(http_client.clone(), config.clone(), s)
+                                .map_err(|e| ControllerError::InternalServerError(e))
                         }
                     }),
             ),

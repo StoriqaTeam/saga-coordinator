@@ -35,6 +35,7 @@ impl FromStr for Gender {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     pub id: i32,
+    pub saga_id: Uuid,
     pub email: String,
     pub is_active: bool,
     pub phone: Option<String>,
@@ -45,21 +46,93 @@ pub struct User {
     pub birthdate: Option<String>,
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct CreateUserInput {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct NewIdentity {
+    pub saga_id: Uuid,
+    pub email: String,
+    pub password: String
+}
+
+impl From<(Uuid, CreateUserInput)> for NewIdentity {
+    fn from(v: (Uuid, CreateUserInput)) -> NewIdentity {
+        Self {
+            saga_id: v.0,
+            email: v.1.email,
+            password: v.1.password,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
+pub enum Role {
+    Superuser,
+    User,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
+pub struct NewUserRole {
+    pub saga_id: Uuid,
+    pub user_id: i32,
+    pub role: Role,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UserRole {
+    pub id: i32,
+    pub saga_id: Uuid,
+    pub user_id: i32,
+    pub role: Role,
+}
+
 pub type OperationLog = Vec<OperationStage>;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum OperationStage {
-    AccountCreationStart,
-    AccountCreationComplete,
-    UsersRoleSetStart,
-    UsersRoleSetComplete,
-    StoreRoleSetStart,
-    StoreRoleSetComplete,
+    AccountCreationStart(Uuid),
+    AccountCreationComplete(Uuid),
+    UsersRoleSetStart(Uuid),
+    UsersRoleSetComplete(Uuid),
+    StoreRoleSetStart(Uuid),
+    StoreRoleSetComplete(Uuid),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InputView {
-    email: String,
+#[async]
+fn create_user(
+    http_client: Arc<HttpClient>,
+    log: Arc<Mutex<OperationLog>>,
+    config: config::Config,
+    input: CreateUserInput,
+) -> Result<User, failure::Error> {
+    // Create account
+    let saga_id = Uuid::new_v4();
+
+    let v = NewIdentity::from((saga_id.clone(), input));
+    let body = serde_json::to_string(&v)?;
+    log.lock()
+        .unwrap()
+        .push(OperationStage::AccountCreationStart(saga_id.clone()));
+
+    let res = await!(http_client.handle().request::<User>(
+            Method::Post,
+            format!(
+                "{}/{}",
+                config.service_url(StqService::Users),
+                StqModel::User.to_url()
+            ),
+            Some(body),
+            None
+        )).map_err(|e| format_err!("{}", e))?;
+    log.lock()
+        .unwrap()
+        .push(OperationStage::AccountCreationComplete(saga_id.clone()));
+
+    Ok(res)
 }
 
 // Contains happy path for account creation
@@ -68,53 +141,38 @@ fn create_happy(
     http_client: Arc<HttpClient>,
     log: Arc<Mutex<OperationLog>>,
     config: config::Config,
-    input: InputView,
-    body: String,
+    input: CreateUserInput,
 ) -> Result<String, failure::Error> {
-    let entity_id = Uuid::new_v4();
+    let res = await!(create_user(http_client.clone(), log.clone(), config.clone(), input.clone()))?;
 
-    // Create account
-    log.lock()
-        .unwrap()
-        .push(OperationStage::AccountCreationStart);
-    let res = await!(http_client.handle().request::<User>(
-        Method::Post,
-        format!(
-            "{}/{}",
-            config.service_url(StqService::Users),
-            StqModel::User.to_url()
-        ),
-        Some(body),
-        None
-    )).map_err(|e| format_err!("{}", e))?;
-    log.lock()
-        .unwrap()
-        .push(OperationStage::AccountCreationComplete);
+    {
+        // Set roles in users
+        let saga_id = Uuid::new_v4();
+        let user_role = NewUserRole {
+            saga_id: saga_id.clone(),
+            user_id: res.id,
+            role: Role::User,
+        };
 
-    // Set roles in users
-    log.lock().unwrap().push(OperationStage::UsersRoleSetStart);
-    let user_role = StqNewUserRole {
-        user_id: res.id,
-        role: StqRole::User,
-    };
+        let body = serde_json::to_string(&user_role)
+            .map_err(|e| format_err!("{}", e))?
+            .to_string();
 
-    let body = serde_json::to_string(&user_role)
-        .map_err(|e| format_err!("{}", e))?
-        .to_string();
-
-    await!(http_client.handle().request::<StqUserRole>(
-        Method::Post,
-        format!(
-            "{}/{}",
-            config.service_url(StqService::Users),
-            StqModel::UserRoles.to_url()
-        ),
-        Some(body),
-        None
-    )).map_err(|e| format_err!("{}", e))?;
-    log.lock()
-        .unwrap()
-        .push(OperationStage::UsersRoleSetComplete);
+        log.lock().unwrap().push(OperationStage::UsersRoleSetStart(saga_id.clone()));
+        await!(http_client.handle().request::<StqUserRole>(
+            Method::Post,
+            format!(
+                "{}/{}",
+                config.service_url(StqService::Users),
+                StqModel::UserRoles.to_url()
+            ),
+            Some(body),
+            None
+        )).map_err(|e| format_err!("{}", e))?;
+        log.lock()
+            .unwrap()
+            .push(OperationStage::UsersRoleSetComplete(saga_id.clone()));
+    }
 
     /*
     // Set roles in stores
@@ -132,13 +190,8 @@ fn create_happy(
 
 // Contains reversal of account creation
 #[async]
-fn create_revert(
-    http_client: Arc<HttpClient>,
-    operation_log: OperationLog,
-    config: config::Config,
-    input: InputView,
-) -> Result<(), failure::Error> {
-    if operation_log.contains(&OperationStage::UsersRoleSetStart) {}
+fn create_revert(http_client: Arc<HttpClient>, operation_log: OperationLog, config: config::Config) -> Result<(), failure::Error> {
+    if operation_log.contains(&OperationStage::UsersRoleSetStart(_)) {}
 
     /*
     if operation_log.contains(&OperationStage::StoreRoleSetStart) {
@@ -153,13 +206,15 @@ fn create_revert(
     }
     */
 
-    if operation_log.contains(&OperationStage::AccountCreationStart) {
+    if operation_log.contains(&OperationStage::AccountCreationStart(saga_id)) {
         await!(http_client.handle().request::<StqUserRole>(
             Method::Delete,
             format!(
-                "{}/{}",
+                "{}/{}/{}",
                 config.service_url(StqService::Users),
-                StqModel::UserRoles.to_url()
+                //StqModel::UserRoles.to_url(),
+                "users_by_uuid",
+                saga_id.clone(),
             ),
             None,
             None
@@ -171,15 +226,15 @@ fn create_revert(
 
 #[async]
 pub fn create(http_client: Arc<HttpClient>, config: config::Config, body: String) -> Result<String, failure::Error> {
-    let input = serde_json::from_str::<InputView>(&body)?;
+    let input = serde_json::from_str::<CreateUserInput>(&body)?;
 
     let log = Arc::new(Mutex::new(OperationLog::new()));
+
     let happy_path = create_happy(
         http_client.clone(),
         log.clone(),
         config.clone(),
         input.clone(),
-        body,
     );
 
     match await!(happy_path) {
@@ -192,7 +247,6 @@ pub fn create(http_client: Arc<HttpClient>, config: config::Config, body: String
                 http_client.clone(),
                 Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
                 config.clone(),
-                input,
             );
 
             await!(revert_path)?;
