@@ -1,19 +1,18 @@
 use config;
 
 use failure;
-use serde_json;
-
 use futures::prelude::*;
 use hyper::Method;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-
+use serde_json;
 use stq_http::client::Client as HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::role::Role as StqRole;
 use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::role::NewUserRole as StqNewUserRole;
 use stq_routes::service::Service as StqService;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -72,6 +71,8 @@ fn create_happy(
     input: InputView,
     body: String,
 ) -> Result<String, failure::Error> {
+    let entity_id = Uuid::new_v4();
+
     // Create account
     log.lock()
         .unwrap()

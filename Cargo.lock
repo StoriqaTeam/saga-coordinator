@@ -565,6 +565,7 @@ dependencies = [
  "stq_router 0.1.0",
  "stq_routes 0.1.0",
  "tokio-core 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "uuid 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -832,6 +833,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "uuid"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "rand 0.3.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "validator"
