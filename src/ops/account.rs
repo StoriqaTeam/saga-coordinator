@@ -56,7 +56,7 @@ pub struct CreateUserInput {
 pub struct NewIdentity {
     pub saga_id: Uuid,
     pub email: String,
-    pub password: String
+    pub password: String,
 }
 
 impl From<(Uuid, CreateUserInput)> for NewIdentity {
@@ -119,15 +119,15 @@ fn create_user(
         .push(OperationStage::AccountCreationStart(saga_id.clone()));
 
     let res = await!(http_client.handle().request::<User>(
-            Method::Post,
-            format!(
-                "{}/{}",
-                config.service_url(StqService::Users),
-                StqModel::User.to_url()
-            ),
-            Some(body),
-            None
-        )).map_err(|e| format_err!("{}", e))?;
+        Method::Post,
+        format!(
+            "{}/{}",
+            config.service_url(StqService::Users),
+            StqModel::User.to_url()
+        ),
+        Some(body),
+        None
+    )).map_err(|e| format_err!("{}", e))?;
     log.lock()
         .unwrap()
         .push(OperationStage::AccountCreationComplete(saga_id.clone()));
@@ -143,7 +143,12 @@ fn create_happy(
     config: config::Config,
     input: CreateUserInput,
 ) -> Result<String, failure::Error> {
-    let res = await!(create_user(http_client.clone(), log.clone(), config.clone(), input.clone()))?;
+    let res = await!(create_user(
+        http_client.clone(),
+        log.clone(),
+        config.clone(),
+        input.clone()
+    ))?;
 
     {
         // Set roles in users
@@ -158,7 +163,9 @@ fn create_happy(
             .map_err(|e| format_err!("{}", e))?
             .to_string();
 
-        log.lock().unwrap().push(OperationStage::UsersRoleSetStart(saga_id.clone()));
+        log.lock()
+            .unwrap()
+            .push(OperationStage::UsersRoleSetStart(saga_id.clone()));
         await!(http_client.handle().request::<StqUserRole>(
             Method::Post,
             format!(
@@ -191,34 +198,37 @@ fn create_happy(
 // Contains reversal of account creation
 #[async]
 fn create_revert(http_client: Arc<HttpClient>, operation_log: OperationLog, config: config::Config) -> Result<(), failure::Error> {
-    if operation_log.contains(&OperationStage::UsersRoleSetStart(_)) {}
+    for e in operation_log {
+        match e {
+            OperationStage::UsersRoleSetStart(_) => {}
 
-    /*
-    if operation_log.contains(&OperationStage::StoreRoleSetStart) {
-        let fut = http_client.handle().request::<String>(
-            Method::Post,
-            format!("{}/remove_role", config.stores_addr),
-            Some(format!("user_id=xxx")),
-            None,
-        );
+            /*
+        if operation_log.contains(&OperationStage::StoreRoleSetStart) {
+            let fut = http_client.handle().request::<String>(
+                Method::Post,
+                format!("{}/remove_role", config.stores_addr),
+                Some(format!("user_id=xxx")),
+                None,
+            );
 
-        await!(fut);
-    }
-    */
-
-    if operation_log.contains(&OperationStage::AccountCreationStart(saga_id)) {
-        await!(http_client.handle().request::<StqUserRole>(
-            Method::Delete,
-            format!(
-                "{}/{}/{}",
-                config.service_url(StqService::Users),
-                //StqModel::UserRoles.to_url(),
-                "users_by_uuid",
-                saga_id.clone(),
-            ),
-            None,
-            None
-        ))?;
+            await!(fut);
+        }
+        */
+            OperationStage::AccountCreationStart(saga_id) => {
+                await!(http_client.handle().request::<StqUserRole>(
+                    Method::Delete,
+                    format!(
+                        "{}/{}/{}",
+                        config.service_url(StqService::Users),
+                        //StqModel::UserRoles.to_url(),
+                        "users_by_uuid",
+                        saga_id.clone(),
+                    ),
+                    None,
+                    None
+                ))?;
+            }
+        }
     }
 
     Ok(())
