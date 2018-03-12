@@ -6,6 +6,7 @@ use hyper::Method;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use serde_json;
+use stq_http;
 use stq_http::client::Client as HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::role::Role as StqRole;
@@ -35,7 +36,7 @@ impl FromStr for Gender {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     pub id: i32,
-    pub saga_id: Uuid,
+    pub saga_id: String,
     pub email: String,
     pub is_active: bool,
     pub phone: Option<String>,
@@ -46,7 +47,7 @@ pub struct User {
     pub birthdate: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateUserInput {
     pub email: String,
     pub password: String,
@@ -54,13 +55,13 @@ pub struct CreateUserInput {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct NewIdentity {
-    pub saga_id: Uuid,
+    pub saga_id: String,
     pub email: String,
     pub password: String,
 }
 
-impl From<(Uuid, CreateUserInput)> for NewIdentity {
-    fn from(v: (Uuid, CreateUserInput)) -> NewIdentity {
+impl From<(String, CreateUserInput)> for NewIdentity {
+    fn from(v: (String, CreateUserInput)) -> NewIdentity {
         Self {
             saga_id: v.0,
             email: v.1.email,
@@ -77,7 +78,6 @@ pub enum Role {
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct NewUserRole {
-    pub saga_id: Uuid,
     pub user_id: i32,
     pub role: Role,
 }
@@ -85,40 +85,38 @@ pub struct NewUserRole {
 #[derive(Deserialize, Debug)]
 pub struct UserRole {
     pub id: i32,
-    pub saga_id: Uuid,
+    pub saga_id: String,
     pub user_id: i32,
     pub role: Role,
 }
 
 pub type OperationLog = Vec<OperationStage>;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum OperationStage {
-    AccountCreationStart(Uuid),
-    AccountCreationComplete(Uuid),
-    UsersRoleSetStart(Uuid),
-    UsersRoleSetComplete(Uuid),
-    StoreRoleSetStart(Uuid),
-    StoreRoleSetComplete(Uuid),
+    AccountCreationStart(String),
+    AccountCreationComplete(String),
+    UsersRoleSetStart(i32),
+    UsersRoleSetComplete(i32),
+    StoreRoleSetStart(i32),
+    StoreRoleSetComplete(i32),
 }
 
-#[async]
 fn create_user(
     http_client: Arc<HttpClient>,
     log: Arc<Mutex<OperationLog>>,
     config: config::Config,
     input: CreateUserInput,
-) -> Result<User, failure::Error> {
+    saga_id: String,
+) -> Box<Future<Item = User, Error = failure::Error>> {
     // Create account
-    let saga_id = Uuid::new_v4();
-
     let v = NewIdentity::from((saga_id.clone(), input));
-    let body = serde_json::to_string(&v)?;
+    let body = serde_json::to_string(&v).unwrap();
     log.lock()
         .unwrap()
         .push(OperationStage::AccountCreationStart(saga_id.clone()));
 
-    let res = await!(http_client.handle().request::<User>(
+    let res = http_client.handle().request::<User>(
         Method::Post,
         format!(
             "{}/{}",
@@ -127,142 +125,203 @@ fn create_user(
         ),
         Some(body),
         None
-    )).map_err(|e| format_err!("{}", e))?;
+    ).map_err(|e| format_err!(""));
+
     log.lock()
         .unwrap()
         .push(OperationStage::AccountCreationComplete(saga_id.clone()));
 
-    Ok(res)
+    Box::new(res)
+}
+
+fn create_user_role(
+    http_client: Arc<HttpClient>,
+    log: Arc<Mutex<OperationLog>>,
+    config: config::Config,
+    input: CreateUserInput,
+    user_id: i32,
+) -> Box<Future<Item = StqUserRole, Error = failure::Error>> {
+    // Create account
+    log.lock()
+        .unwrap()
+        .push(OperationStage::UsersRoleSetStart(user_id.clone()));
+
+    let res = http_client.handle().request::<StqUserRole>(
+        Method::Post,
+        format!(
+            "{}/{}/{}",
+            config.service_url(StqService::Users),
+            "roles/default",
+            user_id.clone()
+        ),
+        None,
+        None
+    ).map_err(|e| format_err!(""));
+
+    log.lock()
+        .unwrap()
+        .push(OperationStage::UsersRoleSetComplete(user_id.clone()));
+
+    Box::new(res)
+}
+
+fn create_store_role(
+    http_client: Arc<HttpClient>,
+    log: Arc<Mutex<OperationLog>>,
+    config: config::Config,
+    input: CreateUserInput,
+    user_id: i32,
+) -> Box<Future<Item = StqUserRole, Error = failure::Error>> {
+    // Create account
+    log.lock()
+        .unwrap()
+        .push(OperationStage::StoreRoleSetStart(user_id.clone()));
+
+    let res = http_client.handle().request::<StqUserRole>(
+        Method::Post,
+        format!(
+            "{}/{}/{}",
+            config.service_url(StqService::Stores),
+            "roles/default",
+            user_id.clone()
+        ),
+        None,
+        None
+    ).map_err(|e| format_err!(""));
+
+    log.lock()
+        .unwrap()
+        .push(OperationStage::StoreRoleSetComplete(user_id.clone()));
+
+    Box::new(res)
 }
 
 // Contains happy path for account creation
-#[async]
 fn create_happy(
     http_client: Arc<HttpClient>,
     log: Arc<Mutex<OperationLog>>,
     config: config::Config,
     input: CreateUserInput,
-) -> Result<String, failure::Error> {
-    let res = await!(create_user(
-        http_client.clone(),
-        log.clone(),
-        config.clone(),
-        input.clone()
-    ))?;
+) -> Box<Future<Item = (), Error = failure::Error>> {
 
-    {
-        // Set roles in users
-        let saga_id = Uuid::new_v4();
-        let user_role = NewUserRole {
-            saga_id: saga_id.clone(),
-            user_id: res.id,
-            role: Role::User,
-        };
+    let http_client2 = http_client.clone();
+    let log2 = log.clone();
+    let config2 = config.clone();
+    let input2 = input.clone();
 
-        let body = serde_json::to_string(&user_role)
-            .map_err(|e| format_err!("{}", e))?
-            .to_string();
+    let http_client3 = http_client.clone();
+    let log3 = log.clone();
+    let config3 = config.clone();
+    let input3 = input.clone();
 
-        log.lock()
-            .unwrap()
-            .push(OperationStage::UsersRoleSetStart(saga_id.clone()));
-        await!(http_client.handle().request::<StqUserRole>(
-            Method::Post,
-            format!(
-                "{}/{}",
-                config.service_url(StqService::Users),
-                StqModel::UserRoles.to_url()
-            ),
-            Some(body),
-            None
-        )).map_err(|e| format_err!("{}", e))?;
-        log.lock()
-            .unwrap()
-            .push(OperationStage::UsersRoleSetComplete(saga_id.clone()));
-    }
+    let saga_id = Uuid::new_v4().to_string();
 
-    /*
-    // Set roles in stores
-    log.push(OperationStage::StoreRoleSetStart);
-    let res_set_store_role = await!(
-        http_client.handle()
-            .get(Uri::new(format!("{}/set_role", config.stores_addr)).unwrap())
-            .map_err(|e| (log, e))
-    )?;
-    log.push(OperationStage::StoreRoleSetComplete);
-    */
-
-    Ok(serde_json::to_string(&res)?)
+    Box::new(
+        create_user(
+            http_client.clone(),
+            log.clone(),
+            config.clone(),
+            input.clone(),
+            saga_id.clone(),
+        )
+        .and_then(|user| {
+            create_user_role(
+                http_client2,
+                log2,
+                config2,
+                input2,
+                user.id.clone(),
+            )
+            .and_then(|user_role| {
+                create_store_role(
+                    http_client3,
+                    log3,
+                    config3,
+                    input3,
+                    user_role.user_id,
+                )
+            })
+        }).map(|user_role| ())
+    )
 }
 
 // Contains reversal of account creation
-#[async]
-fn create_revert(http_client: Arc<HttpClient>, operation_log: OperationLog, config: config::Config) -> Result<(), failure::Error> {
+fn create_revert(
+    http_client: Arc<HttpClient>,
+    operation_log: OperationLog,
+    config: config::Config
+) -> Result<(), failure::Error> {
     for e in operation_log {
         match e {
-            OperationStage::UsersRoleSetStart(_) => {}
+            OperationStage::StoreRoleSetStart(user_id) => {
+                http_client.handle().request::<StqUserRole>(
+                    Method::Delete,
+                    format!(
+                        "{}/{}/{}",
+                        config.service_url(StqService::Stores),
+                        //StqModel::UserRoles.to_url(),
+                        "roles/default",
+                        user_id.clone(),
+                    ),
+                    None,
+                    None
+                );
+            },
 
-            /*
-        if operation_log.contains(&OperationStage::StoreRoleSetStart) {
-            let fut = http_client.handle().request::<String>(
-                Method::Post,
-                format!("{}/remove_role", config.stores_addr),
-                Some(format!("user_id=xxx")),
-                None,
-            );
-
-            await!(fut);
-        }
-        */
             OperationStage::AccountCreationStart(saga_id) => {
-                await!(http_client.handle().request::<StqUserRole>(
+                http_client.handle().request::<StqUserRole>(
                     Method::Delete,
                     format!(
                         "{}/{}/{}",
                         config.service_url(StqService::Users),
                         //StqModel::UserRoles.to_url(),
-                        "users_by_uuid",
+                        "users_by_saga_id",
                         saga_id.clone(),
                     ),
                     None,
                     None
-                ))?;
-            }
+                );
+            },
+
+            _ => {}
         }
     }
 
     Ok(())
 }
 
-#[async]
-pub fn create(http_client: Arc<HttpClient>, config: config::Config, body: String) -> Result<String, failure::Error> {
-    let input = serde_json::from_str::<CreateUserInput>(&body)?;
+
+pub fn create(
+    http_client: Arc<HttpClient>,
+    config: config::Config,
+    body: String
+) -> Box<Future<Item = String, Error = failure::Error>> {
+
+    let http_client2 = http_client.clone();
+    let config2 = config.clone();
+
+    let input = serde_json::from_str::<CreateUserInput>(&body).unwrap();
 
     let log = Arc::new(Mutex::new(OperationLog::new()));
 
-    let happy_path = create_happy(
-        http_client.clone(),
-        log.clone(),
-        config.clone(),
-        input.clone(),
-    );
-
-    match await!(happy_path) {
-        Err(e) => {
-            eprintln!(
-                "Failed to create user {} (error {}). Reverting.",
-                &input.email, &e
-            );
-            let revert_path = create_revert(
-                http_client.clone(),
+    Box::new(
+        create_happy(
+            http_client.clone(),
+            log.clone(),
+            config.clone(),
+            input.clone(),
+        ).map_err(|e| {
+            let rev_res = create_revert(
+                http_client2,
                 Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
-                config.clone(),
+                config2,
             );
 
-            await!(revert_path)?;
-
-            Ok("Complete".into())
-        }
-        Ok(s) => Ok(s),
-    }
+            match rev_res {
+                Ok(_) => format_err!("Revert Ok"),
+                Err(_) => format_err!("Revert Err"),
+            }
+        })
+        .map(|res| "Ok".to_string())
+    )
 }
