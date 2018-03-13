@@ -13,8 +13,9 @@ path = "src/main.rs"
 
 [dependencies]
 env_logger = "*"
+chrono = { version = "0.4", features = ["serde", "rustc-serialize"] }
 failure = "*"
-futures-await = "*"
+futures = "0.1.17"
 futures-cpupool = "*"
 hyper = "*"
 regex = "*"

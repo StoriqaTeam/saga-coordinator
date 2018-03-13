@@ -1,0 +1,27 @@
+version: '3'
+services:
+  saga:
+    image: saga
+    build:
+      context: .
+      dockerfile: Dockerfile.saga
+    container_name: saga
+    working_dir: /app
+    command: cargo run
+    volumes:
+      - ..:/app
+      - saga_cargo_cache:/usr/local/cargo
+    environment:
+      - STQ_USERS_ADDR=http://users:8000
+      - STQ_STORES_ADDR=http://stores:8001
+    expose:
+      - 8004
+    stdin_open: true
+
+volumes:
+  saga_cargo_cache:
+
+networks:
+  default:
+    external:
+      name: storiqa

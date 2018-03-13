@@ -1,4 +1,4 @@
-mod routes;
+pub mod routes;
 
 use config::Config;
 use self::routes::Route;
