@@ -1,0 +1,5 @@
+FROM debian:stable-slim
+
+COPY build /app
+
+ENTRYPOINT ["/app/saga_coordinator_runner"]

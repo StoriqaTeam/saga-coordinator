@@ -1,0 +1,11 @@
+FROM rust:1.23.0-stretch
+
+COPY . /app
+WORKDIR /app
+
+ENV STQ_USERS_ADDR="http://users:8000"
+ENV STQ_STORES_ADDR="http://stores:8001"
+
+RUN cargo build --release --locked
+
+ENTRYPOINT ["cp", "-f", "target/release/saga_coordinator_runner", "/mnt/hostdir"]
