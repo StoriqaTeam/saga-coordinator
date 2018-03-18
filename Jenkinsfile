@@ -1,6 +1,11 @@
 node {
     def bin
     def app
+    
+    stage('Clone repository') {
+        checkout scm
+        sh 'git submodule update --init --recursive'
+    }
 
     stage('Build app') {
         bin = docker.build("storiqateam/saga${env.BRANCH_NAME}","docker/Dockerfile.build")
