@@ -9,12 +9,12 @@ node {
 
     stage('Build app') {
         sh 'cp -f docker/Dockerfile.build Dockerfile'
-        bin = docker.build("storiqateam/saga:${env.BRANCH_NAME}")
+        bin = docker.build("storiqateam/saga-interm:${env.BRANCH_NAME}")
         sh 'rm -f Dockerfile'
     }
     
     stage('Get binary') {
-        bin.inside("cp -f /app/target/release/saga_coordinator_runner .")
+        sh "docker run -i --rm -v ${env.PWD}:/mnt/ -e 'cp -f /app/target/release/saga_coordinator_runner /mnt' storiqateam/saga-interm:${env.BRANCH_NAME}"
     }
     
     stage('')
