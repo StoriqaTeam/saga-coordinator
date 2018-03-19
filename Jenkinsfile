@@ -24,7 +24,7 @@ node {
     }
 
     stage('Push image') {
-        docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+        docker.withRegistry('https://registry.hub.docker.com', '4ca2ddae-a205-45f5-aaf7-333789c385cd') {
             app.push("${env.BRANCH_NAME}${env.BUILD_NUMBER}")
             app.push("${env.BRANCH_NAME}")
         }
