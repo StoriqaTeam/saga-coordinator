@@ -1,7 +1,9 @@
 FROM debian:stable-slim
 
-COPY saga_coordinator_runner /app
+RUN mkdir /app
 WORKDIR /app
+
+COPY saga_coordinator_runner /app
 EXPOSE 8004
 
 ENTRYPOINT ["/app/saga_coordinator_runner"]
