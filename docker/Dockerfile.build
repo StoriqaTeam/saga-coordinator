@@ -7,5 +7,3 @@ ENV STQ_STORES_ADDR="http://stores:8001"
 
 # PLease don't set WORKDIR to /app, it is reserved for future use
 RUN cd /app && cargo build --release --locked
-
-ENTRYPOINT ["cp", "-f", "/app/target/release/saga_coordinator_runner", "."]
