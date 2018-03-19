@@ -14,7 +14,7 @@ node {
     }
     
     stage('Get binary') {
-        sh "docker run -i --rm -v ${env.WORKSPACE}:/mnt/ /mnt storiqateam/saga-interm:${env.BRANCH_NAME} cp -f /app/target/release/saga_coordinator_runner /mnt/"
+        sh "docker run -i --rm --volume ${env.WORKSPACE}:/mnt/ --entrypoint='cp -f /app/target/release/saga_coordinator_runner /mnt/' storiqateam/saga-interm:${env.BRANCH_NAME}"
     }
     
     stage('Build app image') {
