@@ -1,0 +1,9 @@
+FROM rust:1.23.0-stretch
+
+COPY . /app
+
+ENV STQ_USERS_ADDR="http://users:8000"
+ENV STQ_STORES_ADDR="http://stores:8001"
+
+# PLease don't set WORKDIR to /app, it is reserved for future use
+RUN cd /app && cargo build --release --locked
