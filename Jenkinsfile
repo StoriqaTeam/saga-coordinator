@@ -14,10 +14,14 @@ node {
     }
     
     stage('Get binary') {
-        sh "docker run -i --rm -v ${env.PWD}:/mnt/ -e 'cp -f /app/target/release/saga_coordinator_runner /mnt' storiqateam/saga-interm:${env.BRANCH_NAME}"
+        sh "docker run -i --rm -v ${env.WORKSPACE}:/mnt/ /mnt storiqateam/saga-interm:${env.BRANCH_NAME} cp -f /app/target/release/saga_coordinator_runner /mnt/"
     }
     
-    stage('')
+    stage('Build app image') {
+        sh 'cp -f docker/Dockerfile.run Dockerfile'
+        app = docker.build("storiqateam/stq-saga:${env.BRANCH_NAME}")
+        sh 'rm -f Dockerfile'
+    }
 
 //     stage('Push image') {
 //         docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
