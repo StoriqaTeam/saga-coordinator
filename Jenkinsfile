@@ -8,7 +8,8 @@ node {
     }
 
     stage('Build app') {
-        bin = docker.build("storiqateam/saga${env.BRANCH_NAME}","docker/Dockerfile.build")
+        sh 'cp docker/Dockerfile.build .'
+        bin = docker.build("storiqateam/saga${env.BRANCH_NAME}","Dockerfile.build")
     }
     
     stage('Get binary') {
