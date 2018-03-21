@@ -1,4 +1,5 @@
 extern crate chrono;
+extern crate config as config_crate;
 extern crate stq_http;
 extern crate stq_router;
 extern crate stq_routes;
@@ -75,7 +76,7 @@ pub fn start_server(config: config::Config) {
     // Prepare logger
     env_logger::init();
 
-    let address = "0.0.0.0:8004".parse().unwrap();
+    let address = config.listen;
     let thread_count = 8;
 
     // Prepare reactor

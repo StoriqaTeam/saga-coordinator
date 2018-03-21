@@ -1,9 +1,6 @@
 extern crate saga_coordinator_lib as lib;
 
 fn main() {
-    let config = lib::config::Config {
-        users_addr: std::env::var("STQ_USERS_ADDR").expect("Users service address is required"),
-        stores_addr: std::env::var("STQ_STORES_ADDR").expect("Stores service address is required"),
-    };
+    let config = lib::config::Config::new().expect("Failed to load service configuration. Please check your 'config' folder");
     lib::start_server(config);
 }
