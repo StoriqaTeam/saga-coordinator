@@ -227,7 +227,6 @@ fn create_happy(
     config: config::Config,
     input: SagaCreateProfile,
 ) -> Box<Future<Item = User, Error = stq_http::client::Error>> {
-
     let saga_id = Uuid::new_v4().to_string();
 
     Box::new(
@@ -247,23 +246,9 @@ fn create_happy(
             let config2 = config.clone();
 
             move |user| {
-                create_user_role(
-                    http_client,
-                    log,
-                    config,
-                    user.id.clone()
-                )
-                .map(|v| user)
-                .and_then({
-                    move |user| {
-                        create_store_role(
-                            http_client2,
-                            log2,
-                            config2,
-                            user.id
-                        ).map(|v| user)
-                    }
-                })
+                create_user_role(http_client, log, config, user.id.clone())
+                    .map(|v| user)
+                    .and_then({ move |user| create_store_role(http_client2, log2, config2, user.id).map(|v| user) })
             }
         }),
     )
@@ -298,7 +283,7 @@ fn create_revert(
                         )
                     }
                 }).map(|v| ()));
-            },
+            }
 
             OperationStage::AccountCreationStart(saga_id) => {
                 println!("Reverting user, saga_id: {}", saga_id);
@@ -320,7 +305,7 @@ fn create_revert(
                         )
                     }
                 }).map(|v| ()));
-            },
+            }
 
             _ => {}
         }
@@ -334,7 +319,6 @@ pub fn create(
     config: config::Config,
     body: String,
 ) -> Box<Future<Item = Option<User>, Error = failure::Error>> {
-
     let config2 = config.clone();
     let log = Arc::new(Mutex::new(OperationLog::new()));
 
@@ -350,21 +334,19 @@ pub fn create(
                         log.clone(),
                         config.clone(),
                         input.clone(),
-                    )
-                    .map(|user| Some(user))
-                    .map_err(|e| format_err!("Create failed"))
-                    .or_else({
-                        let http_client = http_client.clone();
-                        move |e| {
-                            create_revert(
-                                http_client,
-                                Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
-                                config2,
-                            )
-                            .map(|v| None)
-                            .map_err(|e| format_err!("Revert failed!"))
-                        }
-                    })
+                    ).map(|user| Some(user))
+                        .map_err(|e| format_err!("Create failed"))
+                        .or_else({
+                            let http_client = http_client.clone();
+                            move |e| {
+                                create_revert(
+                                    http_client,
+                                    Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
+                                    config2,
+                                ).map(|v| None)
+                                    .map_err(|e| format_err!("Revert failed!"))
+                            }
+                        })
                 }
             }),
     )
