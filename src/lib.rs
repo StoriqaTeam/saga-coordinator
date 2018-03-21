@@ -33,7 +33,6 @@ use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::role::NewUserRole as StqNewUserRole;
 use stq_routes::service::Service as StqService;
 
-
 use futures::prelude::*;
 use futures::future;
 use futures_cpupool::CpuPool;
