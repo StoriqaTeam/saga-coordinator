@@ -58,6 +58,7 @@ impl Config {
         match service {
             StqService::Users => self.users_addr.clone(),
             StqService::Stores => self.stores_addr.clone(),
+            _ => "".to_string(), // other services are not required
         }
     }
 }
