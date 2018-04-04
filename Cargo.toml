@@ -12,7 +12,8 @@ name = "saga_coordinator_runner"
 path = "src/main.rs"
 
 [dependencies]
-env_logger = "*"
+log="0.4"
+env_logger="0.5.6"
 chrono = { version = "0.4", features = ["serde", "rustc-serialize"] }
 config = "*"
 failure = "*"
