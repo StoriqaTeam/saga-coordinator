@@ -16,67 +16,56 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate uuid;
+#[macro_use]
+extern crate log;
 
 pub mod config;
 mod controller;
 mod ops;
 
+use std::env;
+use std::sync::Arc;
+use std::process;
+use std::io::Write;
+
 use stq_http::client::Client as HttpClient;
-use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::controller::{Application, Controller};
-use stq_http::errors::ControllerError;
-use stq_http::request_util::{read_body, ControllerFuture};
-use stq_http::request_util::serialize_future;
-use stq_routes::model::Model as StqModel;
-use stq_routes::role::Role as StqRole;
-use stq_routes::role::UserRole as StqUserRole;
-use stq_routes::role::NewUserRole as StqNewUserRole;
-use stq_routes::service::Service as StqService;
+use stq_http::controller::{Application};
 
 use futures::prelude::*;
 use futures::future;
-use futures_cpupool::CpuPool;
-use hyper::{Method, StatusCode, Uri};
-use hyper::client::{Client, HttpConnector};
-use hyper::server::{Http, Request, Response, Service};
-use std::collections::HashSet;
-use std::sync::Arc;
-use std::process;
+use hyper::server::{Http};
 use tokio_core::reactor::Core;
+use chrono::prelude::*;
+use env_logger::Builder as LogBuilder;
+use log::LevelFilter as LogLevelFilter;
 
-pub struct ControllerImpl {
-    pub config: config::Config,
-    pub http_client: Arc<HttpClientHandle>,
-}
+use controller::ControllerImpl;
 
-impl Controller for ControllerImpl {
-    fn call(&self, req: Request) -> ControllerFuture {
-        match (req.method(), req.path()) {
-            (&Method::Post, "/create_account") => serialize_future(
-                read_body(req.body())
-                    .map_err(|e| ControllerError::UnprocessableEntity(e.into()))
-                    .and_then({
-                        let http_client = self.http_client.clone();
-                        let config = self.config.clone();
-                        println!("Create account");
-                        move |s| {
-                            ops::account::create(http_client.clone(), config.clone(), s)
-                                .map_err(|e| ControllerError::InternalServerError(e))
-                        }
-                    }),
-            ),
-            _ => Box::new(futures::future::err(ControllerError::NotFound)),
-        }
-    }
-}
 
 /// Starts new web service from provided `Config`
 pub fn start_server(config: config::Config) {
+    let mut builder = LogBuilder::new();
+    builder
+        .format(|formatter, record| {
+            let now = Utc::now();
+            writeln!(
+                formatter,
+                "{} - {} - {}",
+                now.to_rfc3339(),
+                record.level(),
+                record.args()
+            )
+        })
+        .filter(None, LogLevelFilter::Info);
+
+    if env::var("RUST_LOG").is_ok() {
+        builder.parse(&env::var("RUST_LOG").unwrap());
+    }
+
     // Prepare logger
-    env_logger::init();
+    builder.init();
 
     let address = config.listen;
-    let thread_count = 8;
 
     // Prepare reactor
     let mut core = Core::new().expect("Unexpected error creating event loop core");
@@ -95,13 +84,13 @@ pub fn start_server(config: config::Config) {
 
     let serve = Http::new()
         .serve_addr_handle(&address, &*handle, {
-            let handle = handle.clone();
             move || {
                 // Prepare application
                 let app = Application {
                     controller: Box::new(ControllerImpl {
                         config: config.clone(),
                         http_client: client_handle.clone(),
+                        route_parser: Arc::new(controller::routes::create_route_parser())
                     }),
                 };
 
@@ -128,6 +117,6 @@ pub fn start_server(config: config::Config) {
             .map_err(|_| ()),
     );
 
-    //info!("Listening on http://{}, threads: {}", address, thread_count);
+    info!("Listening on http://{}", address);
     core.run(future::empty::<(), ()>()).unwrap();
 }
