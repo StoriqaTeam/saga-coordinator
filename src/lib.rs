@@ -86,13 +86,13 @@ pub fn start_server(config: config::Config) {
         .serve_addr_handle(&address, &*handle, {
             move || {
                 // Prepare application
-                let app = Application {
-                    controller: Box::new(ControllerImpl {
+                let app = Application::new(
+                    ControllerImpl {
                         config: config.clone(),
                         http_client: client_handle.clone(),
-                        route_parser: Arc::new(controller::routes::create_route_parser())
-                    }),
-                };
+                        route_parser: Arc::new(controller::routes::create_route_parser()),
+                    }
+                );
 
                 Ok(app)
             }
