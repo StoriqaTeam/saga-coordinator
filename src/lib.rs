@@ -34,7 +34,6 @@ use stq_http::controller::{Application};
 use futures::prelude::*;
 use futures::future;
 use hyper::server::{Http};
-use hyper::header::AccessControlAllowOrigin;
 use tokio_core::reactor::Core;
 use chrono::prelude::*;
 use env_logger::Builder as LogBuilder;
@@ -87,14 +86,13 @@ pub fn start_server(config: config::Config) {
         .serve_addr_handle(&address, &*handle, {
             move || {
                 // Prepare application
-                let app = Application {
-                    controller: Box::new(ControllerImpl {
+                let app = Application::new(
+                    ControllerImpl {
                         config: config.clone(),
                         http_client: client_handle.clone(),
                         route_parser: Arc::new(controller::routes::create_route_parser()),
-                    }),
-                    acao: AccessControlAllowOrigin::Any,
-                };
+                    }
+                );
 
                 Ok(app)
             }
