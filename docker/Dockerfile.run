@@ -3,6 +3,13 @@ FROM debian:stable-slim
 RUN mkdir /app
 WORKDIR /app
 
+RUN apt-get install -y ca-certificates libssl1.0.0
+
+# Cleaning up
+RUN apt-get autoremove -y
+RUN apt-get clean -y
+RUN rm -rf /var/lib/apt/lists/
+
 COPY saga_coordinator_runner /app
 EXPOSE 8004
 
