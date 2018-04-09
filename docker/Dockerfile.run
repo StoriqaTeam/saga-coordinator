@@ -3,6 +3,7 @@ FROM debian:stable-slim
 RUN mkdir /app
 WORKDIR /app
 
+RUN apt-get update
 RUN apt-get install -y ca-certificates libssl1.0.0
 
 # Cleaning up
