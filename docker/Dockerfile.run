@@ -4,7 +4,7 @@ RUN mkdir /app
 WORKDIR /app
 
 RUN apt-get update
-RUN apt-get install -y ca-certificates libssl1.0.2 libssl 1.1
+RUN apt-get install -y ca-certificates
 
 # Cleaning up
 RUN apt-get autoremove -y
