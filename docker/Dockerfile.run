@@ -1,6 +1,6 @@
 FROM debian:stable-slim
 
-RUN mkdir /app
+RUN mkdir -p /app/config
 
 RUN apt-get update \
     && apt-get install -y ca-certificates \
@@ -9,6 +9,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/
 
 COPY target/release/saga_coordinator_runner /app
+COPY config /app/config
 
 # Running as user "app"
 RUN adduser --disabled-password --gecos "" --home /app --no-create-home -u 5000 app \
