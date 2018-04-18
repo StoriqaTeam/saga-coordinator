@@ -35,15 +35,20 @@ impl FromStr for Gender {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     pub id: i32,
-    pub saga_id: String,
     pub email: String,
-    pub is_active: bool,
+    pub email_verified: bool,
     pub phone: Option<String>,
+    pub phone_verified: bool,
+    pub is_active: bool,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub middle_name: Option<String>,
     pub gender: Gender,
-    pub birthdate: Option<String>,
+    pub birthdate: Option<NaiveDate>,
+    pub last_login_at: SystemTime,
+    pub created_at: SystemTime,
+    pub updated_at: SystemTime,
+    pub saga_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
