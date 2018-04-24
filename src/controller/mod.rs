@@ -22,6 +22,7 @@ use hyper::server::Request;
 use config::Config;
 use self::routes::Route;
 use ops;
+use services::system::{SystemService, SystemServiceImpl};
 
 use validator::{ValidationError, ValidationErrors};
 
@@ -33,7 +34,15 @@ pub struct ControllerImpl {
 
 impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
+        let system_service = SystemServiceImpl::new();
+
         match (req.method(), self.route_parser.test(req.path())) {
+            // GET /healthcheck
+            (&Method::Get, Some(Route::Healthcheck)) => {
+                debug!("Received healthcheck request");
+                serialize_future(system_service.healthcheck())
+            }
+
             (&Method::Post, Some(Route::CreateAccount)) => serialize_future(
                 read_body(req.body())
                     .map_err(|e| ControllerError::UnprocessableEntity(e.into()))
