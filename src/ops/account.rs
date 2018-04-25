@@ -1,6 +1,5 @@
 use config;
 use chrono::NaiveDate;
-use failure;
 use futures;
 use futures::prelude::*;
 use hyper::Method;
@@ -36,15 +35,20 @@ impl FromStr for Gender {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     pub id: i32,
-    pub saga_id: String,
     pub email: String,
-    pub is_active: bool,
+    pub email_verified: bool,
     pub phone: Option<String>,
+    pub phone_verified: bool,
+    pub is_active: bool,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub middle_name: Option<String>,
     pub gender: Gender,
-    pub birthdate: Option<String>,
+    pub birthdate: Option<NaiveDate>,
+    pub last_login_at: SystemTime,
+    pub created_at: SystemTime,
+    pub updated_at: SystemTime,
+    pub saga_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -315,14 +319,14 @@ pub fn create(
     http_client: Arc<HttpClientHandle>,
     config: config::Config,
     body: String,
-) -> Box<Future<Item = Option<User>, Error = failure::Error>> {
+) -> Box<Future<Item = Option<User>, Error = stq_http::client::Error>> {
     let config2 = config.clone();
     let log = Arc::new(Mutex::new(OperationLog::new()));
 
     Box::new(
         serde_json::from_str::<SagaCreateProfile>(&body)
             .into_future()
-            .map_err(|_e| format_err!("Deserialization fail"))
+            .map_err(|_e| stq_http::client::Error::Parse("Deserialization fail".to_string()))
             .and_then({
                 let http_client = http_client.clone();
                 move |input| {
@@ -332,16 +336,14 @@ pub fn create(
                         config.clone(),
                         input.clone(),
                     ).map(|user| Some(user))
-                        .map_err(|_e| format_err!("Create failed"))
                         .or_else({
                             let http_client = http_client.clone();
-                            move |_e| {
+                            move |e| {
                                 create_revert(
                                     http_client,
                                     Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
                                     config2,
-                                ).map(|_v| None)
-                                    .map_err(|_e| format_err!("Revert failed!"))
+                                ).then(move |_res| futures::future::err(e))
                             }
                         })
                 }

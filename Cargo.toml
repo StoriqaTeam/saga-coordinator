@@ -29,3 +29,4 @@ stq_router = { path = "vendor/libstqbackend/router" }
 stq_http = { path = "vendor/libstqbackend/http" }
 tokio-core = "*"
 uuid = { version = "*", features = ["use_std", "v4", "serde"] }
+validator = "0.6"

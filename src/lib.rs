@@ -10,18 +10,20 @@ extern crate failure;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate hyper;
+#[macro_use]
+extern crate log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate uuid;
-#[macro_use]
-extern crate log;
+extern crate validator;
 
 pub mod config;
 mod controller;
 mod ops;
+mod services;
 
 use std::env;
 use std::sync::Arc;
@@ -29,18 +31,17 @@ use std::process;
 use std::io::Write;
 
 use stq_http::client::Client as HttpClient;
-use stq_http::controller::{Application};
+use stq_http::controller::Application;
 
 use futures::prelude::*;
 use futures::future;
-use hyper::server::{Http};
+use hyper::server::Http;
 use tokio_core::reactor::Core;
 use chrono::prelude::*;
 use env_logger::Builder as LogBuilder;
 use log::LevelFilter as LogLevelFilter;
 
 use controller::ControllerImpl;
-
 
 /// Starts new web service from provided `Config`
 pub fn start_server(config: config::Config) {
@@ -86,13 +87,11 @@ pub fn start_server(config: config::Config) {
         .serve_addr_handle(&address, &*handle, {
             move || {
                 // Prepare application
-                let app = Application::new(
-                    ControllerImpl {
-                        config: config.clone(),
-                        http_client: client_handle.clone(),
-                        route_parser: Arc::new(controller::routes::create_route_parser()),
-                    }
-                );
+                let app = Application::new(ControllerImpl {
+                    config: config.clone(),
+                    http_client: client_handle.clone(),
+                    route_parser: Arc::new(controller::routes::create_route_parser()),
+                });
 
                 Ok(app)
             }
