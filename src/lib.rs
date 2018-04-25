@@ -23,6 +23,7 @@ extern crate validator;
 pub mod config;
 mod controller;
 mod ops;
+mod services;
 
 use std::env;
 use std::sync::Arc;
