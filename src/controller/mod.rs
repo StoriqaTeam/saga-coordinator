@@ -77,7 +77,10 @@ impl Controller for ControllerImpl {
 
                                             ControllerError::Validate(valid_errors)
                                         }
-                                        Err(_) => ControllerError::InternalServerError(format_err!("Unknown")),
+                                        Err(e) => {
+                                            info!("{}", e);
+                                            ControllerError::InternalServerError(format_err!("Cannot parse validation errors"))
+                                        },
                                     }
                                 }
                                 _ => ControllerError::InternalServerError(format_err!("Unknown")),
