@@ -44,7 +44,8 @@ pipeline:
     - cargo clean
     - rm diesel || true
   deploy2nightly:
-    image: jackthestripper/drone_k8s_rollout:20180510
+    image: jackthestripper/drone_k8s_rollout:20180510-0
+    debug: true
     namespace: default
     kind: deployment
     object: saga
