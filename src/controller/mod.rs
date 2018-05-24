@@ -6,21 +6,21 @@ use std::sync::Arc;
 use stq_router::RouteParser;
 
 use serde_json;
-use stq_http::client::Error;
-use stq_http::errors::ErrorMessage;
 use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::client::Error;
 use stq_http::controller::Controller;
 use stq_http::errors::ControllerError;
-use stq_http::request_util::{read_body, ControllerFuture};
+use stq_http::errors::ErrorMessage;
 use stq_http::request_util::serialize_future;
+use stq_http::request_util::{read_body, ControllerFuture};
 
-use futures::prelude::*;
 use futures::future;
+use futures::prelude::*;
 use hyper::Method;
 use hyper::server::Request;
 
-use config::Config;
 use self::routes::Route;
+use config::Config;
 use ops;
 use services::system::{SystemService, SystemServiceImpl};
 
@@ -80,7 +80,7 @@ impl Controller for ControllerImpl {
                                         Err(e) => {
                                             info!("{}", e);
                                             ControllerError::InternalServerError(format_err!("Cannot parse validation errors"))
-                                        },
+                                        }
                                     }
                                 }
                                 _ => ControllerError::InternalServerError(format_err!("Unknown")),
