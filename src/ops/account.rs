@@ -1,17 +1,17 @@
-use config;
 use chrono::NaiveDate;
+use config;
 use futures;
 use futures::prelude::*;
 use hyper::Method;
+use serde_json;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use serde_json;
+use std::time::SystemTime;
 use stq_http;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::service::Service as StqService;
-use std::time::SystemTime;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -136,18 +136,12 @@ fn create_user(
         identity: new_ident,
     };
     let body = serde_json::to_string(&create_profile).unwrap();
-    log.lock()
-        .unwrap()
-        .push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
+    log.lock().unwrap().push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
 
     let res = http_client
         .request::<User>(
             Method::Post,
-            format!(
-                "{}/{}",
-                config.service_url(StqService::Users),
-                StqModel::User.to_url()
-            ),
+            format!("{}/{}", config.service_url(StqService::Users), StqModel::User.to_url()),
             Some(body),
             None,
         )
@@ -168,25 +162,16 @@ fn create_user_role(
     user_id: i32,
 ) -> Box<Future<Item = StqUserRole, Error = stq_http::client::Error>> {
     // Create account
-    log.lock()
-        .unwrap()
-        .push(OperationStage::UsersRoleSetStart(user_id.clone()));
+    log.lock().unwrap().push(OperationStage::UsersRoleSetStart(user_id.clone()));
 
     let res = http_client.request::<StqUserRole>(
         Method::Post,
-        format!(
-            "{}/{}/{}",
-            config.service_url(StqService::Users),
-            "roles/default",
-            user_id.clone()
-        ),
+        format!("{}/{}/{}", config.service_url(StqService::Users), "roles/default", user_id.clone()),
         None,
         None,
     );
 
-    log.lock()
-        .unwrap()
-        .push(OperationStage::UsersRoleSetComplete(user_id.clone()));
+    log.lock().unwrap().push(OperationStage::UsersRoleSetComplete(user_id.clone()));
 
     Box::new(res)
 }
@@ -198,25 +183,16 @@ fn create_store_role(
     user_id: i32,
 ) -> Box<Future<Item = StqUserRole, Error = stq_http::client::Error>> {
     // Create account
-    log.lock()
-        .unwrap()
-        .push(OperationStage::StoreRoleSetStart(user_id.clone()));
+    log.lock().unwrap().push(OperationStage::StoreRoleSetStart(user_id.clone()));
 
     let res = http_client.request::<StqUserRole>(
         Method::Post,
-        format!(
-            "{}/{}/{}",
-            config.service_url(StqService::Stores),
-            "roles/default",
-            user_id.clone()
-        ),
+        format!("{}/{}/{}", config.service_url(StqService::Stores), "roles/default", user_id.clone()),
         None,
         None,
     );
 
-    log.lock()
-        .unwrap()
-        .push(OperationStage::StoreRoleSetComplete(user_id.clone()));
+    log.lock().unwrap().push(OperationStage::StoreRoleSetComplete(user_id.clone()));
 
     Box::new(res)
 }
@@ -231,13 +207,7 @@ fn create_happy(
     let saga_id = Uuid::new_v4().to_string();
 
     Box::new(
-        create_user(
-            http_client.clone(),
-            log.clone(),
-            config.clone(),
-            input.clone(),
-            saga_id.clone(),
-        ).and_then({
+        create_user(http_client.clone(), log.clone(), config.clone(), input.clone(), saga_id.clone()).and_then({
             let http_client = http_client.clone();
             let log = log.clone();
             let config = config.clone();
@@ -330,20 +300,13 @@ pub fn create(
             .and_then({
                 let http_client = http_client.clone();
                 move |input| {
-                    create_happy(
-                        http_client.clone(),
-                        log.clone(),
-                        config.clone(),
-                        input.clone(),
-                    ).map(|user| Some(user))
+                    create_happy(http_client.clone(), log.clone(), config.clone(), input.clone())
+                        .map(|user| Some(user))
                         .or_else({
                             let http_client = http_client.clone();
                             move |e| {
-                                create_revert(
-                                    http_client,
-                                    Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
-                                    config2,
-                                ).then(move |_res| futures::future::err(e))
+                                create_revert(http_client, Arc::try_unwrap(log).unwrap().into_inner().unwrap(), config2)
+                                    .then(move |_res| futures::future::err(e))
                             }
                         })
                 }

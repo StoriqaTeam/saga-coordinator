@@ -26,20 +26,20 @@ mod ops;
 mod services;
 
 use std::env;
-use std::sync::Arc;
-use std::process;
 use std::io::Write;
+use std::process;
+use std::sync::Arc;
 
 use stq_http::client::Client as HttpClient;
 use stq_http::controller::Application;
 
-use futures::prelude::*;
-use futures::future;
-use hyper::server::Http;
-use tokio_core::reactor::Core;
 use chrono::prelude::*;
 use env_logger::Builder as LogBuilder;
+use futures::future;
+use futures::prelude::*;
+use hyper::server::Http;
 use log::LevelFilter as LogLevelFilter;
+use tokio_core::reactor::Core;
 
 use controller::ControllerImpl;
 
@@ -49,13 +49,7 @@ pub fn start_server(config: config::Config) {
     builder
         .format(|formatter, record| {
             let now = Utc::now();
-            writeln!(
-                formatter,
-                "{} - {} - {}",
-                now.to_rfc3339(),
-                record.level(),
-                record.args()
-            )
+            writeln!(formatter, "{} - {} - {}", now.to_rfc3339(), record.level(), record.args())
         })
         .filter(None, LogLevelFilter::Info);
 
@@ -106,10 +100,7 @@ pub fn start_server(config: config::Config) {
             .for_each({
                 let handle = handle.clone();
                 move |conn| {
-                    handle.spawn(
-                        conn.map(|_| ())
-                            .map_err(|why| eprintln!("Server Error: {:?}", why)),
-                    );
+                    handle.spawn(conn.map(|_| ()).map_err(|why| eprintln!("Server Error: {:?}", why)));
                     Ok(())
                 }
             })
