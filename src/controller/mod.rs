@@ -39,7 +39,7 @@ impl Controller for ControllerImpl {
         match (req.method(), self.route_parser.test(req.path())) {
             // GET /healthcheck
             (&Method::Get, Some(Route::Healthcheck)) => {
-                debug!("Received healthcheck request");
+                trace!("Received healthcheck request");
                 serialize_future(system_service.healthcheck())
             }
 
