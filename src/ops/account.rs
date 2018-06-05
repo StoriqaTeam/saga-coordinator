@@ -131,10 +131,22 @@ fn create_user(
         password: input.identity.password,
         saga_id: saga_id_arg.clone(),
     };
+    let new_user = input.user.clone().map(|input_user| NewUser {
+        email: input_user.email.clone(),
+        phone: input_user.phone.clone(),
+        first_name: input_user.first_name.clone(),
+        last_name: input_user.last_name.clone(),
+        middle_name: input_user.middle_name.clone(),
+        gender: input_user.gender.clone(),
+        birthdate: input_user.birthdate.clone(),
+        last_login_at: input_user.last_login_at.clone(),
+        saga_id: saga_id_arg.clone(),
+    });
     let create_profile = SagaCreateProfile {
-        user: input.user,
+        user: new_user,
         identity: new_ident,
     };
+
     let body = serde_json::to_string(&create_profile).unwrap();
     log.lock().unwrap().push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
 
