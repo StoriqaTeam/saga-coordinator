@@ -22,9 +22,9 @@ extern crate validator;
 
 pub mod config;
 mod controller;
+mod errors;
 mod models;
 mod services;
-mod errors;
 
 use std::env;
 use std::io::Write;
@@ -43,6 +43,7 @@ use log::LevelFilter as LogLevelFilter;
 use tokio_core::reactor::Core;
 
 use controller::ControllerImpl;
+use errors::Error;
 
 /// Starts new web service from provided `Config`
 pub fn start_server(config: config::Config) {
@@ -82,7 +83,7 @@ pub fn start_server(config: config::Config) {
         .serve_addr_handle(&address, &*handle, {
             move || {
                 // Prepare application
-                let app = Application::new(ControllerImpl {
+                let app = Application::<Error>::new(ControllerImpl {
                     config: config.clone(),
                     http_client: client_handle.clone(),
                     route_parser: Arc::new(controller::routes::create_route_parser()),

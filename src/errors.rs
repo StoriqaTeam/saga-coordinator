@@ -1,7 +1,7 @@
 use hyper::StatusCode;
 use serde_json;
-use validator::ValidationErrors;
 use stq_http::client::Error as HttpError;
+use validator::ValidationErrors;
 
 use stq_http::errors::{Codeable, PayloadCarrier};
 
@@ -13,8 +13,6 @@ pub enum Error {
     Parse,
     #[fail(display = "Validation error")]
     Validate(ValidationErrors),
-    #[fail(display = "Server is refusing to fullfil the reqeust")]
-    Forbidden,
     #[fail(display = "Http client error")]
     HttpClient(HttpError),
 }
@@ -26,7 +24,6 @@ impl Codeable for Error {
             Error::Validate(_) => StatusCode::BadRequest,
             Error::Parse => StatusCode::UnprocessableEntity,
             Error::HttpClient(_) => StatusCode::InternalServerError,
-            Error::Forbidden => StatusCode::Forbidden,
         }
     }
 }

@@ -1,45 +1,40 @@
 use std::sync::{Arc, Mutex};
 
+use failure::Fail;
 use futures;
 use futures::prelude::*;
 use hyper::Method;
 use serde_json;
 use uuid::Uuid;
 
-use stq_http;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::service::Service as StqService;
 
 use config;
+use errors::Error;
 use models::*;
 use services::types::ServiceFuture;
 
-
 pub trait AccountService {
-    fn create(self, input: SagaCreateProfile) -> ServiceFuture<Option<User>>;
+    fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, Option<User>>;
 }
 
 /// Attributes services, responsible for Attribute-related CRUD operations
 pub struct AccountServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,
-    pub log : Arc<Mutex<OperationLog>>,
+    pub log: Arc<Mutex<OperationLog>>,
 }
 
-impl AccountServiceImpl
-{
+impl AccountServiceImpl {
     pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
         let log = Arc::new(Mutex::new(OperationLog::new()));
-        Self {
-            http_client,
-            config,
-            log
-        }
+        Self { http_client, config, log }
     }
 
-    pub fn create_user(&self, input: SagaCreateProfile, saga_id_arg: String) -> ServiceFuture<User> {
+    fn create_user(self, input: SagaCreateProfile, saga_id_arg: String) -> ServiceFuture<Self, User> {
         // Create account
         let new_ident = NewIdentity {
             provider: input.identity.provider,
@@ -64,7 +59,8 @@ impl AccountServiceImpl
         };
 
         let body = serde_json::to_string(&create_profile).unwrap();
-        self.log.lock().unwrap().push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
+        let log = self.log.clone();
+        log.lock().unwrap().push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
 
         let res = self.http_client
             .request::<User>(
@@ -73,106 +69,160 @@ impl AccountServiceImpl
                 Some(body),
                 None,
             )
-            .and_then(move |v| {
-                self.log.lock()
+            .inspect(move |_| {
+                log.lock()
                     .unwrap()
                     .push(OperationStage::AccountCreationComplete(saga_id_arg.clone()));
-                futures::future::ok(v)
+            })
+            .then(|res| match res {
+                Ok(user) => Ok((self, user)),
+                Err(e) => Err((
+                    self,
+                    Error::HttpClient(e).context("Account service create_user error occured.").into(),
+                )),
             });
 
         Box::new(res)
     }
 
-    fn create_user_role(&self,user_id: i32) -> ServiceFuture<StqUserRole> { 
+    fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
-        self.log.lock().unwrap().push(OperationStage::UsersRoleSetStart(user_id.clone()));
+        let log = self.log.clone();
+        log.lock().unwrap().push(OperationStage::UsersRoleSetStart(user_id.clone()));
 
-        let res = self.http_client.request::<StqUserRole>(
-            Method::Post,
-            format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id.clone()),
-            None,
-            None,
-        );
-
-        self.log.lock().unwrap().push(OperationStage::UsersRoleSetComplete(user_id.clone()));
+        let res = self.http_client
+            .request::<StqUserRole>(
+                Method::Post,
+                format!(
+                    "{}/{}/{}",
+                    self.config.service_url(StqService::Users),
+                    "roles/default",
+                    user_id.clone()
+                ),
+                None,
+                None,
+            )
+            .inspect(move |_| {
+                log.lock().unwrap().push(OperationStage::UsersRoleSetComplete(user_id.clone()));
+            })
+            .then(|res| match res {
+                Ok(role) => Ok((self, role)),
+                Err(e) => Err((
+                    self,
+                    Error::HttpClient(e)
+                        .context("Account service create_user_role error occured.")
+                        .into(),
+                )),
+            });
 
         Box::new(res)
     }
 
-    fn create_store_role(&self,user_id: i32) -> ServiceFuture<StqUserRole> {
+    fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
-        self.log.lock().unwrap().push(OperationStage::StoreRoleSetStart(user_id.clone()));
+        let log = self.log.clone();
+        log.lock().unwrap().push(OperationStage::StoreRoleSetStart(user_id.clone()));
 
-        let res = self.http_client.request::<StqUserRole>(
-            Method::Post,
-            format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id.clone()),
-            None,
-            None,
-        );
-
-        self.log.lock().unwrap().push(OperationStage::StoreRoleSetComplete(user_id.clone()));
+        let res = self.http_client
+            .request::<StqUserRole>(
+                Method::Post,
+                format!(
+                    "{}/{}/{}",
+                    self.config.service_url(StqService::Stores),
+                    "roles/default",
+                    user_id.clone()
+                ),
+                None,
+                None,
+            )
+            .inspect(move |_| {
+                log.lock().unwrap().push(OperationStage::StoreRoleSetComplete(user_id.clone()));
+            })
+            .then(|res| match res {
+                Ok(role) => Ok((self, role)),
+                Err(e) => Err((
+                    self,
+                    Error::HttpClient(e)
+                        .context("Account service create_store_role error occured.")
+                        .into(),
+                )),
+            });
 
         Box::new(res)
     }
 
     // Contains happy path for account creation
-    fn create_happy(&self,input: SagaCreateProfile) -> ServiceFuture<User> {
+    fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
         let saga_id = Uuid::new_v4().to_string();
 
-        Box::new(
-            self.create_user(input.clone(), saga_id.clone()).and_then({
-                move |user| {
-                    self.create_user_role(user.id.clone())
-                        .map(|_v| user)
-                        .and_then({ move |user| self.create_store_role(user.id).map(|_v| user) })
-                }
-            }),
-        )
+        Box::new(self.create_user(input, saga_id).and_then({
+            |(s, user)| {
+                s.create_user_role(user.id)
+                    .map(|(s, _)| (s, user))
+                    .and_then({ |(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)) })
+            }
+        }))
     }
 
     // Contains reversal of account creation
-    fn create_revert(&self) -> ServiceFuture<()> {
-        let mut fut: ServiceFuture<()> = Box::new(futures::future::ok(()));
-        for e in operation_log {
+    fn create_revert(self) -> ServiceFuture<Self, ()> {
+        let log = self.log.clone();
+        let log = Arc::try_unwrap(log).unwrap().into_inner().unwrap();
+        let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
+        for e in log {
             match e {
                 OperationStage::StoreRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
-                    fut = Box::new(fut.and_then({
-                        move |_r| {
-                            self.http_client.request::<StqUserRole>(
+                    fut = Box::new(fut.and_then(move |(s, _)| {
+                        s.http_client
+                            .request::<StqUserRole>(
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
-                                    self.config.service_url(StqService::Stores),
-                                    //StqModel::UserRoles.to_url(),
+                                    s.config.service_url(StqService::Stores),
                                     "roles/default",
                                     user_id.clone(),
                                 ),
                                 None,
                                 None,
                             )
-                        }
-                    }).map(|_v| ()));
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    Error::HttpClient(e)
+                                        .context("Account service create_revert StoreRoleSetStart error occured.")
+                                        .into(),
+                                )),
+                            })
+                    }));
                 }
 
                 OperationStage::AccountCreationStart(saga_id) => {
                     println!("Reverting user, saga_id: {}", saga_id);
-                    fut = Box::new(fut.and_then({
-                        move |_res| {
-                            self.http_client.request::<StqUserRole>(
+                    fut = Box::new(fut.and_then(move |(s, _)| {
+                        s.http_client
+                            .request::<StqUserRole>(
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
-                                    config.service_url(StqService::Users),
-                                    //StqModel::UserRoles.to_url(),
+                                    s.config.service_url(StqService::Users),
                                     "user_by_saga_id",
                                     saga_id.clone(),
                                 ),
                                 None,
                                 None,
                             )
-                        }
-                    }).map(|_v| ()));
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    Error::HttpClient(e)
+                                        .context("Account service create_revert AccountCreationStart error occured.")
+                                        .into(),
+                                )),
+                            })
+                    }));
                 }
 
                 _ => {}
@@ -184,20 +234,22 @@ impl AccountServiceImpl
 }
 
 impl AccountService for AccountServiceImpl {
-    pub fn create(self, input: SagaCreateProfile) -> ServiceFuture<Option<User>> {
+    fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, Option<User>> {
         Box::new(
             self.create_happy(input.clone())
-                .map(|user| Some(user))
-                .or_else(move |e| {
-                    // Arc::try_unwrap(log).unwrap().into_inner().unwrap(),
-                        self.create_revert()
-                            .then(move |_res| futures::future::err(e.context("Service Account, create endpoint error occured.")))
-                    }
-                )
+                .map(|(s, user)| (Box::new(s) as Box<AccountService>, Some(user)))
+                .or_else(move |(s, e)| {
+                    s.create_revert().then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+                        futures::future::err((
+                            Box::new(s) as Box<AccountService>,
+                            e.context("Service Account, create endpoint error occured.").into(),
+                        ))
+                    })
+                }),
         )
     }
 }
-
-
-
-
