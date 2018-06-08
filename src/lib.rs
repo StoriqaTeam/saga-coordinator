@@ -22,8 +22,9 @@ extern crate validator;
 
 pub mod config;
 mod controller;
-mod ops;
+mod models;
 mod services;
+mod errors;
 
 use std::env;
 use std::io::Write;

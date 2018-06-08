@@ -1,28 +1,31 @@
 pub mod routes;
 
 use std::collections::HashMap;
-
 use std::sync::Arc;
-use stq_router::RouteParser;
 
-use serde_json;
-use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::client::Error;
-use stq_http::controller::Controller;
-use stq_http::errors::ControllerError;
-use stq_http::errors::ErrorMessage;
-use stq_http::request_util::serialize_future;
-use stq_http::request_util::{read_body, ControllerFuture};
-
+use failure::Error as FailureError;
+use failure::Fail;
 use futures::future;
 use futures::prelude::*;
 use hyper::Method;
 use hyper::server::Request;
+use serde_json;
+
+use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::client::Error as HttpError;
+use stq_http::controller::Controller;
+use stq_http::errors::ErrorMessage;
+use stq_http::request_util::serialize_future;
+use stq_http::request_util::parse_body;
+use stq_http::controller::ControllerFuture;
+use stq_router::RouteParser;
 
 use self::routes::Route;
 use config::Config;
-use ops;
+use models::SagaCreateProfile;
 use services::system::{SystemService, SystemServiceImpl};
+use services::account::{AccountServiceImpl, AccountService};
+use errors::Error;
 
 use validator::{ValidationError, ValidationErrors};
 
@@ -35,8 +38,11 @@ pub struct ControllerImpl {
 impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         let system_service = SystemServiceImpl::new();
+        let http_client = self.http_client.clone();
+        let config = self.config.clone();
+        let account_service = AccountServiceImpl::new(http_client, config);
 
-        match (req.method(), self.route_parser.test(req.path())) {
+        match (&req.method().clone(), self.route_parser.test(req.path().clone())) {
             // GET /healthcheck
             (&Method::Get, Some(Route::Healthcheck)) => {
                 trace!("Received healthcheck request");
@@ -44,21 +50,20 @@ impl Controller for ControllerImpl {
             }
 
             (&Method::Post, Some(Route::CreateAccount)) => serialize_future(
-                read_body(req.body())
-                    .map_err(|e| ControllerError::UnprocessableEntity(e.into()))
+                parse_body::<SagaCreateProfile>(req.body())
+                    .map_err(|e| {
+                        e.context("Parsing body // POST /stores/search in SearchStore failed!")
+                            .context(Error::Parse)
+                            .into()
+                    })
                     .and_then({
-                        let http_client = self.http_client.clone();
-                        let config = self.config.clone();
-                        println!("Create account");
                         move |s| {
-                            ops::account::create(http_client.clone(), config.clone(), s).map_err(|e| match e {
-                                Error::Api(status, Some(ErrorMessage { code, message })) => {
-                                    let _status = status;
-                                    let _code = code;
-                                    let message = message.to_string();
+                            account_service.create(s).map_err(|e| match e {
+                                HttpError::Api(status, Some(ErrorMessage { payload, .. })) => {
+                                    let payload = payload.to_string();
                                     // Wierd construction of ValidationErrors dou to the fact ValidationErrors.add
                                     // only accepts str with static lifetime
-                                    let valid_err_res = serde_json::from_str::<HashMap<&str, Vec<ValidationError>>>(&message);
+                                    let valid_err_res = serde_json::from_str::<HashMap<&str, Vec<ValidationError>>>(&payload);
                                     match valid_err_res {
                                         Ok(valid_err_map) => {
                                             let mut valid_errors = ValidationErrors::new();
@@ -75,20 +80,28 @@ impl Controller for ControllerImpl {
                                                 }
                                             }
 
-                                            ControllerError::Validate(valid_errors)
+                                            Error::Validate(valid_errors).into()
                                         }
                                         Err(e) => {
-                                            info!("{}", e);
-                                            ControllerError::InternalServerError(format_err!("Cannot parse validation errors"))
+                                            e.context("Cannot parse validation errors").into()
                                         }
                                     }
                                 }
-                                _ => ControllerError::InternalServerError(format_err!("Unknown")),
+                                e => e.into(),
                             })
                         }
-                    }),
+                    })
+                    .map_err(|e: FailureError| e.context("Error during account creation in saga occured.").into())
             ),
-            _ => Box::new(future::err(ControllerError::NotFound)),
+            
+            // Fallback
+            (m, r) => {
+                Box::new(future::err(
+                    Error::NotFound
+                        .context(format!("Request to non existing endpoint in saga microservice! {:?} {:?}", m, r))
+                        .into(),
+                ))
+            }
         }
     }
 }
