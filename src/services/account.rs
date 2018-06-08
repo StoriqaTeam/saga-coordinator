@@ -1,13 +1,17 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use failure::Fail;
+use failure::{Context, Error as FailureError, Fail};
 use futures;
 use futures::prelude::*;
 use hyper::Method;
 use serde_json;
 use uuid::Uuid;
+use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::client::Error as HttpError;
+use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::service::Service as StqService;
@@ -78,7 +82,9 @@ impl AccountServiceImpl {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((
                     self,
-                    Error::HttpClient(e).context("Account service create_user error occured.").into(),
+                    format_err!("Creating user in users microservice failed.")
+                        .context(Error::HttpClient(e))
+                        .into(),
                 )),
             });
 
@@ -109,8 +115,8 @@ impl AccountServiceImpl {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
-                    Error::HttpClient(e)
-                        .context("Account service create_user_role error occured.")
+                    format_err!("Creating role in users microservice failed.")
+                        .context(Error::HttpClient(e))
                         .into(),
                 )),
             });
@@ -142,8 +148,8 @@ impl AccountServiceImpl {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
-                    Error::HttpClient(e)
-                        .context("Account service create_store_role error occured.")
+                    format_err!("Creating role in stores microservice failed.")
+                        .context(Error::HttpClient(e))
                         .into(),
                 )),
             });
@@ -166,10 +172,9 @@ impl AccountServiceImpl {
 
     // Contains reversal of account creation
     fn create_revert(self) -> ServiceFuture<Self, ()> {
-        let log = self.log.clone();
-        let log = Arc::try_unwrap(log).unwrap().into_inner().unwrap();
+        let log = self.log.lock().unwrap().clone();
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log {
+        for e in log.into_iter() {
             match e {
                 OperationStage::StoreRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
@@ -190,8 +195,8 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    Error::HttpClient(e)
-                                        .context("Account service create_revert StoreRoleSetStart error occured.")
+                                    format_err!("Account service create_revert StoreRoleSetStart error occured.")
+                                        .context(Error::HttpClient(e))
                                         .into(),
                                 )),
                             })
@@ -217,8 +222,8 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    Error::HttpClient(e)
-                                        .context("Account service create_revert AccountCreationStart error occured.")
+                                    format_err!("Account service create_revert AccountCreationStart error occured.")
+                                        .context(Error::HttpClient(e))
                                         .into(),
                                 )),
                             })
@@ -244,11 +249,53 @@ impl AccountService for AccountServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((
-                            Box::new(s) as Box<AccountService>,
-                            e.context("Service Account, create endpoint error occured.").into(),
-                        ))
+                        futures::future::err((Box::new(s) as Box<AccountService>, e.into()))
                     })
+                })
+                .map_err(|(s, e): (Box<AccountService>, FailureError)| {
+                    {
+                        let real_err = e.causes()
+                            .filter_map(|cause| {
+                                if let Some(ctx) = cause.downcast_ref::<Context<Error>>() {
+                                    Some(ctx.get_context())
+                                } else {
+                                    cause.downcast_ref::<Error>()
+                                }
+                            })
+                            .nth(0);
+                        if let Some(Error::HttpClient(HttpError::Api(_, Some(ErrorMessage { payload, .. })))) = real_err {
+                            if let Some(payload) = payload {
+                                // Wierd construction of ValidationErrors due to the fact ValidationErrors.add
+                                // only accepts str with static lifetime
+                                let valid_err_res = serde_json::from_value::<HashMap<String, Vec<ValidationError>>>(payload.clone());
+                                match valid_err_res {
+                                    Ok(valid_err_map) => {
+                                        let mut valid_errors = ValidationErrors::new();
+
+                                        if let Some(map_val) = valid_err_map.get("email") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("email", map_val[0].clone())
+                                            }
+                                        }
+
+                                        if let Some(map_val) = valid_err_map.get("password") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("password", map_val[0].clone())
+                                            }
+                                        }
+
+                                        return (s, Error::Validate(valid_errors).into());
+                                    }
+                                    Err(e) => {
+                                        return (s, e.context("Cannot parse validation errors").into());
+                                    }
+                                }
+                            } else {
+                                return (s, format_err!("Http error does not contain payload. ").into());
+                            }
+                        }
+                    }
+                    (s, e)
                 }),
         )
     }
