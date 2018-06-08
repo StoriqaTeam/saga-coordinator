@@ -1,6 +1,5 @@
+use failure::Error as FailureError;
 use futures::future::Future;
 
-use super::error::ServiceError;
-
 /// Service layer Future
-pub type ServiceFuture<T> = Box<Future<Item = T, Error = ServiceError>>;
+pub type ServiceFuture<SELF, T> = Box<Future<Item = (SELF, T), Error = (SELF, FailureError)>>;
