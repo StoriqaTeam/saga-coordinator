@@ -6,7 +6,6 @@ use futures;
 use futures::prelude::*;
 use hyper::Method;
 use serde_json;
-use uuid::Uuid;
 use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -21,64 +20,39 @@ use errors::Error;
 use models::*;
 use services::types::ServiceFuture;
 
-pub trait AccountService {
-    fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, Option<User>>;
+pub trait StoreService {
+    fn create(self, input: NewStore) -> ServiceFuture<Box<StoreService>, Option<Store>>;
 }
 
 /// Attributes services, responsible for Attribute-related CRUD operations
-pub struct AccountServiceImpl {
+pub struct StoreServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,
-    pub log: Arc<Mutex<CreateProfileOperationLog>>,
+    pub log: Arc<Mutex<CreateStoreOperationLog>>,
 }
 
-impl AccountServiceImpl {
+impl StoreServiceImpl {
     pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
-        let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
+        let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
         Self { http_client, config, log }
     }
 
-    fn create_user(self, input: SagaCreateProfile, saga_id_arg: String) -> ServiceFuture<Self, User> {
-        // Create account
-        let new_ident = NewIdentity {
-            provider: input.identity.provider,
-            email: input.identity.email,
-            password: input.identity.password,
-            saga_id: saga_id_arg.clone(),
-        };
-        let new_user = input.user.clone().map(|input_user| NewUser {
-            email: input_user.email.clone(),
-            phone: input_user.phone.clone(),
-            first_name: input_user.first_name.clone(),
-            last_name: input_user.last_name.clone(),
-            middle_name: input_user.middle_name.clone(),
-            gender: input_user.gender.clone(),
-            birthdate: input_user.birthdate.clone(),
-            last_login_at: input_user.last_login_at.clone(),
-            saga_id: saga_id_arg.clone(),
-        });
-        let create_profile = SagaCreateProfile {
-            user: new_user,
-            identity: new_ident,
-        };
-
-        let body = serde_json::to_string(&create_profile).unwrap();
+    fn create_store(self, input: NewStore) -> ServiceFuture<Self, Store> {
+        // Create Store
+        let body = serde_json::to_string(&input).unwrap();
         let log = self.log.clone();
-        log.lock()
-            .unwrap()
-            .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg.clone()));
+        let user_id = input.user_id;
+        log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
 
         let res = self.http_client
-            .request::<User>(
+            .request::<Store>(
                 Method::Post,
-                format!("{}/{}", self.config.service_url(StqService::Users), StqModel::User.to_url()),
+                format!("{}/{}", self.config.service_url(StqService::Stores), StqModel::Store.to_url()),
                 Some(body),
                 None,
             )
             .inspect(move |_| {
-                log.lock()
-                    .unwrap()
-                    .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg.clone()));
+                log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(user_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -93,35 +67,36 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
-        // Create account
+    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, StqUserRole> {
+        // Create Store
         let log = self.log.clone();
+        let body = json!({"role_id": "store_manager", "role_data": store_id}).to_string();
         log.lock()
             .unwrap()
-            .push(CreateProfileOperationStage::UsersRoleSetStart(user_id.clone()));
+            .push(CreateStoreOperationStage::WarehouseRoleSetStart(user_id.clone()));
 
         let res = self.http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!(
                     "{}/{}/{}",
-                    self.config.service_url(StqService::Users),
-                    "roles/default",
+                    self.config.service_url(StqService::Warehouses),
+                    "roles/by-user-id/",
                     user_id.clone()
                 ),
-                None,
+                Some(body),
                 None,
             )
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateProfileOperationStage::UsersRoleSetComplete(user_id.clone()));
+                    .push(CreateStoreOperationStage::WarehouseRoleSetComplete(user_id.clone()));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
-                    format_err!("Creating role in users microservice failed.")
+                    format_err!("Creating role in warehouses microservice failed.")
                         .context(Error::HttpClient(e))
                         .into(),
                 )),
@@ -130,63 +105,21 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
-        // Create account
-        let log = self.log.clone();
-        log.lock()
-            .unwrap()
-            .push(CreateProfileOperationStage::StoreRoleSetStart(user_id.clone()));
-
-        let res = self.http_client
-            .request::<StqUserRole>(
-                Method::Post,
-                format!(
-                    "{}/{}/{}",
-                    self.config.service_url(StqService::Stores),
-                    "roles/default",
-                    user_id.clone()
-                ),
-                None,
-                None,
-            )
-            .inspect(move |_| {
-                log.lock()
-                    .unwrap()
-                    .push(CreateProfileOperationStage::StoreRoleSetComplete(user_id.clone()));
-            })
-            .then(|res| match res {
-                Ok(role) => Ok((self, role)),
-                Err(e) => Err((
-                    self,
-                    format_err!("Creating role in stores microservice failed.")
-                        .context(Error::HttpClient(e))
-                        .into(),
-                )),
-            });
-
-        Box::new(res)
+    // Contains happy path for Store creation
+    fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
+        Box::new(
+            self.create_store(input)
+                .and_then({ |(s, store)| s.create_warehouse_role(store.user_id, store.id).map(|(s, _)| (s, store)) }),
+        )
     }
 
-    // Contains happy path for account creation
-    fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
-        let saga_id = Uuid::new_v4().to_string();
-
-        Box::new(self.create_user(input, saga_id).and_then({
-            |(s, user)| {
-                s.create_user_role(user.id)
-                    .map(|(s, _)| (s, user))
-                    .and_then({ |(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)) })
-            }
-        }))
-    }
-
-    // Contains reversal of account creation
+    // Contains reversal of Store creation
     fn create_revert(self) -> ServiceFuture<Self, ()> {
         let log = self.log.lock().unwrap().clone();
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
-                CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
+                CreateStoreOperationStage::WarehouseRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
@@ -194,7 +127,7 @@ impl AccountServiceImpl {
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
-                                    s.config.service_url(StqService::Stores),
+                                    s.config.service_url(StqService::Warehouses),
                                     "roles/default",
                                     user_id.clone(),
                                 ),
@@ -205,7 +138,7 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert StoreRoleSetStart error occured.")
+                                    format_err!("Store service create_revert WarehouseRoleSetStart error occured.")
                                         .context(Error::HttpClient(e))
                                         .into(),
                                 )),
@@ -213,17 +146,17 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                CreateProfileOperationStage::AccountCreationStart(saga_id) => {
-                    println!("Reverting user, saga_id: {}", saga_id);
+                CreateStoreOperationStage::StoreCreationStart(user_id) => {
+                    println!("Reverting user, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
-                                    s.config.service_url(StqService::Users),
-                                    "user_by_saga_id",
-                                    saga_id.clone(),
+                                    s.config.service_url(StqService::Stores),
+                                    "user_by_user_id",
+                                    user_id.clone(),
                                 ),
                                 None,
                                 None,
@@ -232,7 +165,7 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert AccountCreationStart error occured.")
+                                    format_err!("Store service create_revert StoreCreationStart error occured.")
                                         .context(Error::HttpClient(e))
                                         .into(),
                                 )),
@@ -248,21 +181,21 @@ impl AccountServiceImpl {
     }
 }
 
-impl AccountService for AccountServiceImpl {
-    fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, Option<User>> {
+impl StoreService for StoreServiceImpl {
+    fn create(self, input: NewStore) -> ServiceFuture<Box<StoreService>, Option<Store>> {
         Box::new(
             self.create_happy(input.clone())
-                .map(|(s, user)| (Box::new(s) as Box<AccountService>, Some(user)))
+                .map(|(s, user)| (Box::new(s) as Box<StoreService>, Some(user)))
                 .or_else(move |(s, e)| {
                     s.create_revert().then(move |res| {
                         let s = match res {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((Box::new(s) as Box<AccountService>, e.into()))
+                        futures::future::err((Box::new(s) as Box<StoreService>, e.into()))
                     })
                 })
-                .map_err(|(s, e): (Box<AccountService>, FailureError)| {
+                .map_err(|(s, e): (Box<StoreService>, FailureError)| {
                     {
                         let real_err = e.causes()
                             .filter_map(|cause| {

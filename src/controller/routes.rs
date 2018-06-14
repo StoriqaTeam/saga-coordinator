@@ -4,6 +4,7 @@ use stq_router::RouteParser;
 pub enum Route {
     Healthcheck,
     CreateAccount,
+    CreateStore,
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -13,6 +14,8 @@ pub fn create_route_parser() -> RouteParser<Route> {
     router.add_route(r"^/healthcheck$", || Route::Healthcheck);
 
     router.add_route(r"^/create_account", || Route::CreateAccount);
+
+    router.add_route(r"^/create_store", || Route::CreateStore);
 
     router
 }

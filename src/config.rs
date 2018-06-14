@@ -34,6 +34,7 @@ pub struct Config {
     pub listen: SocketAddr,
     pub users_addr: String,
     pub stores_addr: String,
+    pub warehouses_addr: String,
 }
 
 impl Config {
@@ -58,6 +59,7 @@ impl Config {
         match service {
             StqService::Users => self.users_addr.clone(),
             StqService::Stores => self.stores_addr.clone(),
+            StqService::Warehouses => self.warehouses_addr.clone(),
             _ => "".to_string(), // other services are not required
         }
     }

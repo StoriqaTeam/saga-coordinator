@@ -1,3 +1,4 @@
 listen = "0.0.0.0:8004"
 users_addr = "http://users:8000"
 stores_addr = "http://stores:8001"
+warehouses_addr = "http://warehouses:8002"

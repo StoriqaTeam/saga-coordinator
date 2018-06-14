@@ -19,8 +19,9 @@ use stq_router::RouteParser;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use models::SagaCreateProfile;
+use models::{NewStore, SagaCreateProfile};
 use services::account::{AccountService, AccountServiceImpl};
+use services::store::{StoreService, StoreServiceImpl};
 
 pub struct ControllerImpl {
     pub config: Config,
@@ -32,7 +33,8 @@ impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         let http_client = self.http_client.clone();
         let config = self.config.clone();
-        let account_service = AccountServiceImpl::new(http_client, config);
+        let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
+        let store_service = StoreServiceImpl::new(http_client, config);
         let path = req.path().to_string();
 
         match (&req.method().clone(), self.route_parser.test(req.path())) {
@@ -49,6 +51,22 @@ impl Controller for ControllerImpl {
                             .create(profile)
                             .map(|(_, user)| user)
                             .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                    }),
+            ),
+
+            (&Method::Post, Some(Route::CreateStore)) => serialize_future(
+                parse_body::<NewStore>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body // POST /create_store in NewStore failed!")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |store| {
+                        store_service
+                            .create(store)
+                            .map(|(_, user)| user)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during store creation in saga occured.")))
                     }),
             ),
 
