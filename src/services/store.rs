@@ -4,7 +4,10 @@ use std::sync::{Arc, Mutex};
 use failure::{Context, Error as FailureError, Fail};
 use futures;
 use futures::prelude::*;
+use hyper::header::Authorization;
+use hyper::Headers;
 use hyper::Method;
+
 use serde_json;
 use validator::{ValidationError, ValidationErrors};
 
@@ -12,7 +15,6 @@ use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
-use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::service::Service as StqService;
 
 use config;
@@ -29,12 +31,18 @@ pub struct StoreServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateStoreOperationLog>>,
+    pub user_id: Option<i32>,
 }
 
 impl StoreServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
+    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<i32>) -> Self {
         let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
-        Self { http_client, config, log }
+        Self {
+            http_client,
+            config,
+            log,
+            user_id,
+        }
     }
 
     fn create_store(self, input: NewStore) -> ServiceFuture<Self, Store> {
@@ -44,12 +52,17 @@ impl StoreServiceImpl {
         let user_id = input.user_id;
         log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
 
+        let mut headers = Headers::new();
+        if let Some(ref user_id) = self.user_id {
+            headers.set(Authorization(user_id.to_string()));
+        };
+
         let res = self.http_client
             .request::<Store>(
                 Method::Post,
                 format!("{}/{}", self.config.service_url(StqService::Stores), StqModel::Store.to_url()),
                 Some(body),
-                None,
+                Some(headers),
             )
             .inspect(move |_| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(user_id));
@@ -67,16 +80,23 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, StqUserRole> {
+    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, WarehouseRole> {
         // Create Store
         let log = self.log.clone();
-        let body = json!({"role_id": "store_manager", "role_data": store_id}).to_string();
+        let role = NewWarehouseRole {
+            role_id: "store_manager".to_string(),
+            role_data: store_id,
+        };
+        let body = serde_json::to_string(&role).unwrap_or_default();
         log.lock()
             .unwrap()
             .push(CreateStoreOperationStage::WarehouseRoleSetStart(user_id.clone()));
 
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
+
         let res = self.http_client
-            .request::<StqUserRole>(
+            .request::<WarehouseRole>(
                 Method::Post,
                 format!(
                     "{}/{}/{}",
@@ -85,7 +105,7 @@ impl StoreServiceImpl {
                     user_id.clone()
                 ),
                 Some(body),
-                None,
+                Some(headers),
             )
             .inspect(move |_| {
                 log.lock()
@@ -116,23 +136,27 @@ impl StoreServiceImpl {
     // Contains reversal of Store creation
     fn create_revert(self) -> ServiceFuture<Self, ()> {
         let log = self.log.lock().unwrap().clone();
+
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
                 CreateStoreOperationStage::WarehouseRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
+                        let mut headers = Headers::new();
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
+
                         s.http_client
-                            .request::<StqUserRole>(
+                            .request::<WarehouseRole>(
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
                                     s.config.service_url(StqService::Warehouses),
-                                    "roles/default",
+                                    "roles/by-user-id/",
                                     user_id.clone(),
                                 ),
                                 None,
-                                None,
+                                Some(headers),
                             )
                             .then(|res| match res {
                                 Ok(_) => Ok((s, ())),
@@ -147,19 +171,24 @@ impl StoreServiceImpl {
                 }
 
                 CreateStoreOperationStage::StoreCreationStart(user_id) => {
-                    println!("Reverting user, user_id: {}", user_id);
+                    println!("Reverting store, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
+                        let mut headers = Headers::new();
+                        if let Some(ref user_id) = s.user_id {
+                            headers.set(Authorization(user_id.to_string()));
+                        };
+
                         s.http_client
-                            .request::<StqUserRole>(
+                            .request::<Option<Store>>(
                                 Method::Delete,
                                 format!(
-                                    "{}/{}/{}",
+                                    "{}/{}/by_user_id/{}",
                                     s.config.service_url(StqService::Stores),
-                                    "user_by_user_id",
+                                    StqModel::Store.to_url(),
                                     user_id.clone(),
                                 ),
                                 None,
-                                None,
+                                Some(headers),
                             )
                             .then(|res| match res {
                                 Ok(_) => Ok((s, ())),
@@ -185,7 +214,7 @@ impl StoreService for StoreServiceImpl {
     fn create(self, input: NewStore) -> ServiceFuture<Box<StoreService>, Option<Store>> {
         Box::new(
             self.create_happy(input.clone())
-                .map(|(s, user)| (Box::new(s) as Box<StoreService>, Some(user)))
+                .map(|(s, store)| (Box::new(s) as Box<StoreService>, Some(store)))
                 .or_else(move |(s, e)| {
                     s.create_revert().then(move |res| {
                         let s = match res {
@@ -214,16 +243,39 @@ impl StoreService for StoreServiceImpl {
                                 match valid_err_res {
                                     Ok(valid_err_map) => {
                                         let mut valid_errors = ValidationErrors::new();
-
+                                        if let Some(map_val) = valid_err_map.get("name") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("name", map_val[0].clone())
+                                            }
+                                        }
+                                        if let Some(map_val) = valid_err_map.get("short_description") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("short_description", map_val[0].clone())
+                                            }
+                                        }
+                                        if let Some(map_val) = valid_err_map.get("long_description") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("long_description", map_val[0].clone())
+                                            }
+                                        }
+                                        if let Some(map_val) = valid_err_map.get("slug") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("slug", map_val[0].clone())
+                                            }
+                                        }
+                                        if let Some(map_val) = valid_err_map.get("phone") {
+                                            if !map_val.is_empty() {
+                                                valid_errors.add("phone", map_val[0].clone())
+                                            }
+                                        }
                                         if let Some(map_val) = valid_err_map.get("email") {
                                             if !map_val.is_empty() {
                                                 valid_errors.add("email", map_val[0].clone())
                                             }
                                         }
-
-                                        if let Some(map_val) = valid_err_map.get("password") {
+                                        if let Some(map_val) = valid_err_map.get("default_language") {
                                             if !map_val.is_empty() {
-                                                valid_errors.add("password", map_val[0].clone())
+                                                valid_errors.add("default_language", map_val[0].clone())
                                             }
                                         }
 
