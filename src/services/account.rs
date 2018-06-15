@@ -29,12 +29,12 @@ pub trait AccountService {
 pub struct AccountServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,
-    pub log: Arc<Mutex<OperationLog>>,
+    pub log: Arc<Mutex<CreateProfileOperationLog>>,
 }
 
 impl AccountServiceImpl {
     pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
-        let log = Arc::new(Mutex::new(OperationLog::new()));
+        let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
         Self { http_client, config, log }
     }
 
@@ -64,7 +64,9 @@ impl AccountServiceImpl {
 
         let body = serde_json::to_string(&create_profile).unwrap();
         let log = self.log.clone();
-        log.lock().unwrap().push(OperationStage::AccountCreationStart(saga_id_arg.clone()));
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg.clone()));
 
         let res = self.http_client
             .request::<User>(
@@ -76,7 +78,7 @@ impl AccountServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(OperationStage::AccountCreationComplete(saga_id_arg.clone()));
+                    .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg.clone()));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -94,7 +96,9 @@ impl AccountServiceImpl {
     fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
         let log = self.log.clone();
-        log.lock().unwrap().push(OperationStage::UsersRoleSetStart(user_id.clone()));
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::UsersRoleSetStart(user_id.clone()));
 
         let res = self.http_client
             .request::<StqUserRole>(
@@ -109,7 +113,9 @@ impl AccountServiceImpl {
                 None,
             )
             .inspect(move |_| {
-                log.lock().unwrap().push(OperationStage::UsersRoleSetComplete(user_id.clone()));
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::UsersRoleSetComplete(user_id.clone()));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -127,7 +133,9 @@ impl AccountServiceImpl {
     fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
         let log = self.log.clone();
-        log.lock().unwrap().push(OperationStage::StoreRoleSetStart(user_id.clone()));
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::StoreRoleSetStart(user_id.clone()));
 
         let res = self.http_client
             .request::<StqUserRole>(
@@ -142,7 +150,9 @@ impl AccountServiceImpl {
                 None,
             )
             .inspect(move |_| {
-                log.lock().unwrap().push(OperationStage::StoreRoleSetComplete(user_id.clone()));
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::StoreRoleSetComplete(user_id.clone()));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -176,7 +186,7 @@ impl AccountServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
-                OperationStage::StoreRoleSetStart(user_id) => {
+                CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
@@ -203,7 +213,7 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                OperationStage::AccountCreationStart(saga_id) => {
+                CreateProfileOperationStage::AccountCreationStart(saga_id) => {
                     println!("Reverting user, saga_id: {}", saga_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client

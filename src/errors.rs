@@ -15,6 +15,10 @@ pub enum Error {
     Validate(ValidationErrors),
     #[fail(display = "Http client error")]
     HttpClient(HttpError),
+    #[fail(display = "Server is refusing to fullfil the reqeust")]
+    Forbidden,
+    #[fail(display = "Unknown server error")]
+    Unknown,
 }
 
 impl Codeable for Error {
@@ -24,6 +28,8 @@ impl Codeable for Error {
             Error::Validate(_) => StatusCode::BadRequest,
             Error::Parse => StatusCode::UnprocessableEntity,
             Error::HttpClient(_) => StatusCode::InternalServerError,
+            Error::Unknown => StatusCode::InternalServerError,
+            Error::Forbidden => StatusCode::Forbidden,
         }
     }
 }
