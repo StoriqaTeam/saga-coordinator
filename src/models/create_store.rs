@@ -76,16 +76,17 @@ pub struct NewStore {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NewWarehouseRole {
-    pub role_id: String,
-    pub role_data: i32,
+pub struct Payload {
+    pub name: String,
+    pub data: i32,
 }
+
+pub type NewWarehouseRole = Payload;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WarehouseRole {
     pub id: i32,
-    pub role_id: String,
-    pub role_data: i32,
+    pub role: Payload,
 }
 
 pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
