@@ -128,10 +128,7 @@ impl StoreServiceImpl {
 
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
-        Box::new(
-            self.create_store(input)
-                .and_then({ |(s, store)| s.create_warehouse_role(store.user_id, store.id).map(|(s, _)| (s, store)) }),
-        )
+        Box::new(self.create_store(input))
     }
 
     // Contains reversal of Store creation
