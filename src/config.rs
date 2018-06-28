@@ -21,10 +21,10 @@ impl Env {
     }
 
     fn to_string(&self) -> &'static str {
-        match self {
-            &Env::Development => "development",
-            &Env::Production => "production",
-            &Env::Test => "test",
+        match *self {
+            Env::Development => "development",
+            Env::Production => "production",
+            Env::Test => "test",
         }
     }
 }
