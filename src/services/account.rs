@@ -53,8 +53,8 @@ impl AccountServiceImpl {
             last_name: input_user.last_name.clone(),
             middle_name: input_user.middle_name.clone(),
             gender: input_user.gender.clone(),
-            birthdate: input_user.birthdate.clone(),
-            last_login_at: input_user.last_login_at.clone(),
+            birthdate: input_user.birthdate,
+            last_login_at: input_user.last_login_at,
             saga_id: saga_id_arg.clone(),
         });
         let create_profile = SagaCreateProfile {
@@ -96,26 +96,17 @@ impl AccountServiceImpl {
     fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
         let log = self.log.clone();
-        log.lock()
-            .unwrap()
-            .push(CreateProfileOperationStage::UsersRoleSetStart(user_id.clone()));
+        log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
         let res = self.http_client
             .request::<StqUserRole>(
                 Method::Post,
-                format!(
-                    "{}/{}/{}",
-                    self.config.service_url(StqService::Users),
-                    "roles/default",
-                    user_id.clone()
-                ),
+                format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
                 None,
                 None,
             )
             .inspect(move |_| {
-                log.lock()
-                    .unwrap()
-                    .push(CreateProfileOperationStage::UsersRoleSetComplete(user_id.clone()));
+                log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetComplete(user_id));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -133,26 +124,17 @@ impl AccountServiceImpl {
     fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
         // Create account
         let log = self.log.clone();
-        log.lock()
-            .unwrap()
-            .push(CreateProfileOperationStage::StoreRoleSetStart(user_id.clone()));
+        log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
         let res = self.http_client
             .request::<StqUserRole>(
                 Method::Post,
-                format!(
-                    "{}/{}/{}",
-                    self.config.service_url(StqService::Stores),
-                    "roles/default",
-                    user_id.clone()
-                ),
+                format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
                 None,
                 None,
             )
             .inspect(move |_| {
-                log.lock()
-                    .unwrap()
-                    .push(CreateProfileOperationStage::StoreRoleSetComplete(user_id.clone()));
+                log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetComplete(user_id));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -184,7 +166,7 @@ impl AccountServiceImpl {
     fn create_revert(self) -> ServiceFuture<Self, ()> {
         let log = self.log.lock().unwrap().clone();
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log.into_iter() {
+        for e in log {
             match e {
                 CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
                     println!("Reverting users role, user_id: {}", user_id);
@@ -192,12 +174,7 @@ impl AccountServiceImpl {
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Stores),
-                                    "roles/default",
-                                    user_id.clone(),
-                                ),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Stores), "roles/default", user_id,),
                                 None,
                                 None,
                             )
@@ -259,7 +236,7 @@ impl AccountService for AccountServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((Box::new(s) as Box<AccountService>, e.into()))
+                        futures::future::err((Box::new(s) as Box<AccountService>, e))
                     })
                 })
                 .map_err(|(s, e): (Box<AccountService>, FailureError)| {
@@ -301,7 +278,7 @@ impl AccountService for AccountServiceImpl {
                                     }
                                 }
                             } else {
-                                return (s, format_err!("Http error does not contain payload. ").into());
+                                return (s, format_err!("Http error does not contain payload. "));
                             }
                         }
                     }

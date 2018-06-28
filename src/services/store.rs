@@ -47,9 +47,9 @@ impl StoreServiceImpl {
         }
     }
 
-    fn create_store(self, input: NewStore) -> ServiceFuture<Self, Store> {
+    fn create_store(self, input: &NewStore) -> ServiceFuture<Self, Store> {
         // Create Store
-        let body = serde_json::to_string(&input).unwrap();
+        let body = serde_json::to_string(input).unwrap();
         let log = self.log.clone();
         let user_id = input.user_id;
         log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
@@ -93,7 +93,7 @@ impl StoreServiceImpl {
         };
         let role = WarehouseRole {
             id: new_role_id.clone(),
-            user_id: user_id.clone(),
+            user_id: user_id,
             role: role_payload.clone(),
         };
 
@@ -133,7 +133,7 @@ impl StoreServiceImpl {
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
         Box::new(
-            self.create_store(input)
+            self.create_store(&input)
                 .and_then({ |(s, store)| s.create_warehouse_role(store.user_id, store.id).map(|(s, _)| (s, store)) }),
         )
     }
@@ -190,7 +190,7 @@ impl StoreServiceImpl {
                                     "{}/{}/by_user_id/{}",
                                     s.config.service_url(StqService::Stores),
                                     StqModel::Store.to_url(),
-                                    user_id.clone(),
+                                    user_id,
                                 ),
                                 None,
                                 Some(headers),
