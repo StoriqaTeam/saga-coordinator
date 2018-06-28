@@ -1,6 +1,7 @@
 use std::time::SystemTime;
 
 use serde_json;
+use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub enum Status {
@@ -85,7 +86,8 @@ pub type NewWarehouseRole = Payload;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WarehouseRole {
-    pub id: i32,
+    pub id: Uuid,
+    pub user_id: i32,
     pub role: Payload,
 }
 
@@ -95,6 +97,6 @@ pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 pub enum CreateStoreOperationStage {
     StoreCreationStart(i32),
     StoreCreationComplete(i32),
-    WarehouseRoleSetStart(i32),
-    WarehouseRoleSetComplete(i32),
+    WarehouseRoleSetStart(Uuid),
+    WarehouseRoleSetComplete(Uuid),
 }

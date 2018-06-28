@@ -10,6 +10,7 @@ use hyper::Method;
 use hyper::StatusCode;
 
 use serde_json;
+use uuid::Uuid;
 use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -84,14 +85,22 @@ impl StoreServiceImpl {
     fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, WarehouseRole> {
         // Create Store
         let log = self.log.clone();
-        let role = NewWarehouseRole {
-            name: "store_manager".to_string(),
+
+        let new_role_id = Uuid::new_v4();
+        let role_payload = NewWarehouseRole {
+            name: "StoreManager".to_string(),
             data: store_id,
         };
+        let role = WarehouseRole {
+            id: new_role_id.clone(),
+            user_id: user_id.clone(),
+            role: role_payload.clone(),
+        };
+
         let body = serde_json::to_string(&role).unwrap_or_default();
         log.lock()
             .unwrap()
-            .push(CreateStoreOperationStage::WarehouseRoleSetStart(user_id.clone()));
+            .push(CreateStoreOperationStage::WarehouseRoleSetStart(new_role_id.clone()));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
@@ -99,19 +108,14 @@ impl StoreServiceImpl {
         let res = self.http_client
             .request::<WarehouseRole>(
                 Method::Post,
-                format!(
-                    "{}/{}/{}",
-                    self.config.service_url(StqService::Warehouses),
-                    "roles/by_user_id/",
-                    user_id.clone()
-                ),
+                format!("{}/{}", self.config.service_url(StqService::Warehouses), "roles"),
                 Some(body),
                 Some(headers),
             )
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateStoreOperationStage::WarehouseRoleSetComplete(user_id.clone()));
+                    .push(CreateStoreOperationStage::WarehouseRoleSetComplete(new_role_id.clone()));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -128,7 +132,10 @@ impl StoreServiceImpl {
 
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
-        Box::new(self.create_store(input))
+        Box::new(
+            self.create_store(input)
+                .and_then({ |(s, store)| s.create_warehouse_role(store.user_id, store.id).map(|(s, _)| (s, store)) }),
+        )
     }
 
     // Contains reversal of Store creation
@@ -138,8 +145,8 @@ impl StoreServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
-                CreateStoreOperationStage::WarehouseRoleSetStart(user_id) => {
-                    println!("Reverting warehouses role, user_id: {}", user_id);
+                CreateStoreOperationStage::WarehouseRoleSetStart(role_id) => {
+                    println!("Reverting warehouses role, user_id: {}", role_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
@@ -150,8 +157,8 @@ impl StoreServiceImpl {
                                 format!(
                                     "{}/{}/{}",
                                     s.config.service_url(StqService::Warehouses),
-                                    "roles/by_user_id/",
-                                    user_id.clone(),
+                                    "roles/by-id",
+                                    role_id.clone(),
                                 ),
                                 None,
                                 Some(headers),
