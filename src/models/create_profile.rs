@@ -67,7 +67,7 @@ pub struct NewIdentity {
     pub saga_id: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SagaCreateProfile {
     pub user: Option<NewUser>,
     pub identity: NewIdentity,

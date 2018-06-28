@@ -51,7 +51,7 @@ pub fn start_server(config: config::Config) {
     builder
         .format(|formatter, record| {
             let now = Utc::now();
-            writeln!(formatter, "{} - {} - {}", now.to_rfc3339(), record.level(), record.args())
+            writeln!(formatter, "{} - {:5} - {}", now.to_rfc3339(), record.level(), record.args())
         })
         .filter(None, LogLevelFilter::Info);
 
