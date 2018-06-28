@@ -49,6 +49,7 @@ impl StoreServiceImpl {
 
     fn create_store(self, input: &NewStore) -> ServiceFuture<Self, Store> {
         // Create Store
+        debug!("Creating store, input: {:?}", input);
         let body = serde_json::to_string(input).unwrap();
         let log = self.log.clone();
         let user_id = input.user_id;
@@ -73,7 +74,7 @@ impl StoreServiceImpl {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((
                     self,
-                    format_err!("Creating user in users microservice failed.")
+                    format_err!("Creating store in stores microservice failed.")
                         .context(Error::HttpClient(e))
                         .into(),
                 )),
@@ -83,7 +84,8 @@ impl StoreServiceImpl {
     }
 
     fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, WarehouseRole> {
-        // Create Store
+        // Create warehouse role
+        debug!("Creating warehouse role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
         let new_role_id = Uuid::new_v4();
@@ -146,7 +148,7 @@ impl StoreServiceImpl {
         for e in log.into_iter() {
             match e {
                 CreateStoreOperationStage::WarehouseRoleSetStart(role_id) => {
-                    println!("Reverting warehouses role, user_id: {}", role_id);
+                    debug!("Reverting warehouses role, user_id: {}", role_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
@@ -176,7 +178,7 @@ impl StoreServiceImpl {
                 }
 
                 CreateStoreOperationStage::StoreCreationStart(user_id) => {
-                    println!("Reverting store, user_id: {}", user_id);
+                    debug!("Reverting store, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         let mut headers = Headers::new();
                         if let Some(ref user_id) = s.user_id {

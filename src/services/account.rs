@@ -39,6 +39,7 @@ impl AccountServiceImpl {
     }
 
     fn create_user(self, input: SagaCreateProfile, saga_id_arg: String) -> ServiceFuture<Self, User> {
+        debug!("Creating user, input: {:?}, saga id: {}", input, saga_id_arg);
         // Create account
         let new_ident = NewIdentity {
             provider: input.identity.provider,
@@ -94,7 +95,8 @@ impl AccountServiceImpl {
     }
 
     fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
-        // Create account
+        debug!("Creating user role for user_id: {}", user_id);
+        // Create user role
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
@@ -122,7 +124,8 @@ impl AccountServiceImpl {
     }
 
     fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
-        // Create account
+        debug!("Creating store user role for user_id: {}", user_id);
+        // Create store role
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
@@ -169,7 +172,7 @@ impl AccountServiceImpl {
         for e in log {
             match e {
                 CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
-                    println!("Reverting users role, user_id: {}", user_id);
+                    debug!("Reverting users role, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<StqUserRole>(
@@ -191,7 +194,7 @@ impl AccountServiceImpl {
                 }
 
                 CreateProfileOperationStage::AccountCreationStart(saga_id) => {
-                    println!("Reverting user, saga_id: {}", saga_id);
+                    debug!("Reverting user, saga_id: {}", saga_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<StqUserRole>(
