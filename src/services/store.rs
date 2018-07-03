@@ -385,6 +385,11 @@ impl StoreService for StoreServiceImpl {
                                                         valid_errors.add("default_language", map_val[0].clone())
                                                     }
                                                 }
+                                                if let Some(map_val) = valid_err_map.get("store") {
+                                                    if !map_val.is_empty() {
+                                                        valid_errors.add("store", map_val[0].clone())
+                                                    }
+                                                }
 
                                                 return (s, Error::Validate(valid_errors).into());
                                             }
