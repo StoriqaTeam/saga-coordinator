@@ -82,10 +82,10 @@ pub struct Payload {
     pub data: i32,
 }
 
-pub type NewWarehouseRole = Payload;
+pub type NewRole = Payload;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct WarehouseRole {
+pub struct Role {
     pub id: Uuid,
     pub user_id: i32,
     pub role: Payload,
@@ -97,6 +97,8 @@ pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 pub enum CreateStoreOperationStage {
     StoreCreationStart(i32),
     StoreCreationComplete(i32),
-    WarehouseRoleSetStart(Uuid),
-    WarehouseRoleSetComplete(Uuid),
+    WarehousesRoleSetStart(Uuid),
+    WarehousesRoleSetComplete(Uuid),
+    OrdersRoleSetStart(Uuid),
+    OrdersRoleSetComplete(Uuid),
 }

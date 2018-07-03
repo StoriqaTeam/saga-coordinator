@@ -21,6 +21,7 @@ use stq_routes::service::Service as StqService;
 
 use config;
 use errors::Error;
+use models::create_store::Role;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -83,17 +84,17 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, WarehouseRole> {
+    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, Role> {
         // Create warehouse role
         debug!("Creating warehouse role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
         let new_role_id = Uuid::new_v4();
-        let role_payload = NewWarehouseRole {
+        let role_payload = NewRole {
             name: "StoreManager".to_string(),
             data: store_id,
         };
-        let role = WarehouseRole {
+        let role = Role {
             id: new_role_id.clone(),
             user_id: user_id,
             role: role_payload.clone(),
@@ -102,13 +103,13 @@ impl StoreServiceImpl {
         let body = serde_json::to_string(&role).unwrap_or_default();
         log.lock()
             .unwrap()
-            .push(CreateStoreOperationStage::WarehouseRoleSetStart(new_role_id.clone()));
+            .push(CreateStoreOperationStage::WarehousesRoleSetStart(new_role_id.clone()));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
 
         let res = self.http_client
-            .request::<WarehouseRole>(
+            .request::<Role>(
                 Method::Post,
                 format!("{}/{}", self.config.service_url(StqService::Warehouses), "roles"),
                 Some(body),
@@ -117,7 +118,7 @@ impl StoreServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateStoreOperationStage::WarehouseRoleSetComplete(new_role_id.clone()));
+                    .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id.clone()));
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -132,12 +133,64 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
+    fn create_orders_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, Role> {
+        // Create orders role
+        debug!("Creating orders role, user id: {}, store id: {}", user_id, store_id);
+        let log = self.log.clone();
+
+        let new_role_id = Uuid::new_v4();
+        let role_payload = NewRole {
+            name: "StoreManager".to_string(),
+            data: store_id,
+        };
+        let role = Role {
+            id: new_role_id.clone(),
+            user_id: user_id,
+            role: role_payload.clone(),
+        };
+
+        let body = serde_json::to_string(&role).unwrap_or_default();
+        log.lock()
+            .unwrap()
+            .push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id.clone()));
+
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can add role to orders
+
+        let res = self.http_client
+            .request::<Role>(
+                Method::Post,
+                format!("{}/{}", self.config.service_url(StqService::Orders), "roles"),
+                Some(body),
+                Some(headers),
+            )
+            .inspect(move |_| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id.clone()));
+            })
+            .then(|res| match res {
+                Ok(role) => Ok((self, role)),
+                Err(e) => Err((
+                    self,
+                    format_err!("Creating role in orders microservice failed.")
+                        .context(Error::HttpClient(e))
+                        .into(),
+                )),
+            });
+
+        Box::new(res)
+    }
+
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
-        Box::new(
-            self.create_store(&input)
-                .and_then({ |(s, store)| s.create_warehouse_role(store.user_id, store.id).map(|(s, _)| (s, store)) }),
-        )
+        Box::new(self.create_store(&input).and_then(|(s, store)| {
+            let user_id = store.user_id;
+            let store_id = store.id;
+            s.create_warehouse_role(user_id, store_id)
+                .and_then(move |(s, _)| s.create_orders_role(user_id, store_id))
+                .map(|(s, _)| (s, store))
+        }))
     }
 
     // Contains reversal of Store creation
@@ -147,14 +200,44 @@ impl StoreServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
-                CreateStoreOperationStage::WarehouseRoleSetStart(role_id) => {
+                CreateStoreOperationStage::OrdersRoleSetStart(role_id) => {
+                    debug!("Reverting orders role, user_id: {}", role_id);
+                    fut = Box::new(fut.and_then(move |(s, _)| {
+                        let mut headers = Headers::new();
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from orders
+
+                        s.http_client
+                            .request::<Role>(
+                                Method::Delete,
+                                format!(
+                                    "{}/{}/{}",
+                                    s.config.service_url(StqService::Orders),
+                                    "roles/by-id",
+                                    role_id.clone(),
+                                ),
+                                None,
+                                Some(headers),
+                            )
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    format_err!("Store service create_revert OrdersRoleSetStart error occured.")
+                                        .context(Error::HttpClient(e))
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
+                CreateStoreOperationStage::WarehousesRoleSetStart(role_id) => {
                     debug!("Reverting warehouses role, user_id: {}", role_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
 
                         s.http_client
-                            .request::<WarehouseRole>(
+                            .request::<Role>(
                                 Method::Delete,
                                 format!(
                                     "{}/{}/{}",
