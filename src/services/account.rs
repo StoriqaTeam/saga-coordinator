@@ -13,11 +13,11 @@ use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
-use stq_routes::role::UserRole as StqUserRole;
 use stq_routes::service::Service as StqService;
 
 use config;
 use errors::Error;
+use models::create_profile::UserRole as StqUserRole;
 use models::*;
 use services::types::ServiceFuture;
 

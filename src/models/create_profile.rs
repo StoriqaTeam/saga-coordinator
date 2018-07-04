@@ -88,7 +88,6 @@ pub struct NewUserRole {
 #[derive(Deserialize, Debug)]
 pub struct UserRole {
     pub id: i32,
-    pub saga_id: String,
     pub user_id: i32,
     pub role: Role,
 }
