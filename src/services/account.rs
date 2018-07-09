@@ -25,7 +25,7 @@ pub trait AccountService {
     fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, Option<User>>;
 }
 
-/// Attributes services, responsible for Attribute-related CRUD operations
+/// Account service, responsible for Creating user
 pub struct AccountServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,

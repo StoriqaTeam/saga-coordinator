@@ -36,6 +36,7 @@ pub struct Config {
     pub stores_addr: String,
     pub warehouses_addr: String,
     pub orders_addr: String,
+    pub billing_addr: String,
 }
 
 impl Config {
@@ -62,6 +63,7 @@ impl Config {
             StqService::Stores => self.stores_addr.clone(),
             StqService::Warehouses => self.warehouses_addr.clone(),
             StqService::Orders => self.orders_addr.clone(),
+            StqService::Billing => self.billing_addr.clone(),
             _ => "".to_string(), // other services are not required
         }
     }

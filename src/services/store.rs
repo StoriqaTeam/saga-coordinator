@@ -209,12 +209,7 @@ impl StoreServiceImpl {
                         s.http_client
                             .request::<Role>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Orders),
-                                    "roles/by-id",
-                                    role_id.clone(),
-                                ),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Orders), "roles/by-id", role_id.clone(),),
                                 None,
                                 Some(headers),
                             )

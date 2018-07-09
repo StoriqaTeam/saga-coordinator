@@ -5,6 +5,7 @@ pub enum Route {
     Healthcheck,
     CreateAccount,
     CreateStore,
+    CreateOrder,
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -16,6 +17,8 @@ pub fn create_route_parser() -> RouteParser<Route> {
     router.add_route(r"^/create_account", || Route::CreateAccount);
 
     router.add_route(r"^/create_store", || Route::CreateStore);
+
+    router.add_route(r"^/create_order", || Route::CreateOrder);
 
     router
 }
