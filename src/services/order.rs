@@ -92,10 +92,10 @@ impl OrderServiceImpl {
         debug!("Creating invoice, input: {:?}", input);
         let log = self.log.clone();
 
-        let customer_id = input.customer_id;
+        let saga_id = input.saga_id;
         log.lock()
             .unwrap()
-            .push(CreateOrderOperationStage::BillingCreateInvoiceStart(customer_id));
+            .push(CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id));
 
         let mut headers = Headers::new();
         if let Some(ref user_id) = self.user_id {
@@ -110,7 +110,7 @@ impl OrderServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<String>(Method::Post, format!("{}/order_info", billing_url), Some(body), Some(headers))
+                    .request::<String>(Method::Post, format!("{}/invoices", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
                         format_err!("Creating invoice in billing microservice failed.")
                             .context(Error::HttpClient(e))
@@ -121,7 +121,7 @@ impl OrderServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(customer_id));
+                    .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -138,6 +138,7 @@ impl OrderServiceImpl {
                 customer_id: input.customer_id,
                 orders,
                 currency_id: input.currency_id,
+                saga_id: SagaId::new()
             };
             s.create_invoice(create_invoice)
         }))
@@ -180,19 +181,19 @@ impl OrderServiceImpl {
                     }));
                 }
 
-                CreateOrderOperationStage::BillingCreateInvoiceStart(customer_id) => {
-                    debug!("Reverting create invoice, customer_id: {:?}", customer_id);
+                CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id) => {
+                    debug!("Reverting create invoice, saga_id: {:?}", saga_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can revert invoice
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<UserId>(
                                 Method::Delete,
                                 format!(
-                                    "{}/merchants/user/{}",
+                                    "{}/invoices/{}",
                                     s.config.service_url(StqService::Billing),
-                                    customer_id.0.clone(),
+                                    saga_id.0.clone(),
                                 ),
                                 None,
                                 Some(headers),
@@ -208,6 +209,7 @@ impl OrderServiceImpl {
                             })
                     }));
                 }
+
                 _ => {}
             }
         }

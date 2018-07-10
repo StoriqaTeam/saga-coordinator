@@ -1,6 +1,8 @@
-use chrono::NaiveDate;
 use std::str::FromStr;
 use std::time::SystemTime;
+
+use chrono::NaiveDate;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -92,6 +94,22 @@ pub struct UserRole {
     pub role: Role,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Hash, Serialize, Deserialize, Eq)]
+pub struct UserId(pub i32);
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateUserMerchantPayload {
+    pub id: UserId,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct MerchantId(pub Uuid);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Merchant {
+    pub merchant_id: MerchantId,
+}
+
 pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -102,4 +120,6 @@ pub enum CreateProfileOperationStage {
     UsersRoleSetComplete(i32),
     StoreRoleSetStart(i32),
     StoreRoleSetComplete(i32),
+    BillingCreateMerchantStart(UserId),
+    BillingCreateMerchantComplete(UserId),
 }

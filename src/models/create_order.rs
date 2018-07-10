@@ -1,6 +1,9 @@
-use chrono::prelude::*;
-
 use std::collections::{BTreeMap, HashMap};
+
+use chrono::prelude::*;
+use uuid::Uuid;
+
+use super::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub enum OrderStatus {
@@ -39,19 +42,26 @@ pub struct ConvertCart {
     pub currency_id: CurrencyId,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct SagaId(pub Uuid);
+
+impl SagaId {
+    pub fn new() -> Self {
+        SagaId(Uuid::new_v4())
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateInvoice {
     pub orders: Vec<Order>,
     #[serde(skip_serializing)]
     pub customer_id: UserId,
+    pub saga_id: SagaId,
     pub currency_id: CurrencyId,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct CurrencyId(pub i32);
-
-#[derive(Clone, Copy, Debug, PartialEq, Hash, Serialize, Deserialize, Eq)]
-pub struct UserId(pub i32);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct Address {
@@ -113,6 +123,6 @@ pub type CartHash = BTreeMap<i32, OrdersCartItemInfo>;
 pub enum CreateOrderOperationStage {
     OrdersConvertCartStart(UserId),
     OrdersConvertCartComplete(UserId),
-    BillingCreateInvoiceStart(UserId),
-    BillingCreateInvoiceComplete(UserId),
+    BillingCreateInvoiceStart(SagaId),
+    BillingCreateInvoiceComplete(SagaId),
 }

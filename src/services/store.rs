@@ -51,7 +51,7 @@ impl StoreServiceImpl {
     fn create_store(self, input: &NewStore) -> ServiceFuture<Self, Store> {
         // Create Store
         debug!("Creating store, input: {:?}", input);
-        let body = serde_json::to_string(input).unwrap();
+
         let log = self.log.clone();
         let user_id = input.user_id;
         log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
@@ -61,24 +61,32 @@ impl StoreServiceImpl {
             headers.set(Authorization(user_id.to_string()));
         };
 
-        let res = self.http_client
-            .request::<Store>(
-                Method::Post,
-                format!("{}/{}", self.config.service_url(StqService::Stores), StqModel::Store.to_url()),
-                Some(body),
-                Some(headers),
-            )
+        let client = self.http_client.clone();
+        let stores_url = self.config.service_url(StqService::Stores);
+
+        let res = serde_json::to_string(input)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<Store>(
+                        Method::Post,
+                        format!("{}/{}", stores_url, StqModel::Store.to_url()),
+                        Some(body),
+                        Some(headers),
+                    )
+                    .map_err(|e| {
+                        format_err!("Creating store in stores microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
             .inspect(move |_| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(user_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
-                Err(e) => Err((
-                    self,
-                    format_err!("Creating store in stores microservice failed.")
-                        .context(Error::HttpClient(e))
-                        .into(),
-                )),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
@@ -100,7 +108,6 @@ impl StoreServiceImpl {
             role: role_payload.clone(),
         };
 
-        let body = serde_json::to_string(&role).unwrap_or_default();
         log.lock()
             .unwrap()
             .push(CreateStoreOperationStage::WarehousesRoleSetStart(new_role_id.clone()));
@@ -108,26 +115,34 @@ impl StoreServiceImpl {
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
 
-        let res = self.http_client
-            .request::<Role>(
-                Method::Post,
-                format!("{}/{}", self.config.service_url(StqService::Warehouses), "roles"),
-                Some(body),
-                Some(headers),
-            )
+        let client = self.http_client.clone();
+        let warehouses_url = self.config.service_url(StqService::Warehouses);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<Role>(
+                        Method::Post,
+                        format!("{}/{}", warehouses_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    )
+                    .map_err(|e| {
+                        format_err!("Creating role in warehouses microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id.clone()));
             })
             .then(|res| match res {
-                Ok(role) => Ok((self, role)),
-                Err(e) => Err((
-                    self,
-                    format_err!("Creating role in warehouses microservice failed.")
-                        .context(Error::HttpClient(e))
-                        .into(),
-                )),
+                Ok(user) => Ok((self, user)),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
@@ -149,7 +164,6 @@ impl StoreServiceImpl {
             role: role_payload.clone(),
         };
 
-        let body = serde_json::to_string(&role).unwrap_or_default();
         log.lock()
             .unwrap()
             .push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id.clone()));
@@ -157,40 +171,94 @@ impl StoreServiceImpl {
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to orders
 
-        let res = self.http_client
-            .request::<Role>(
-                Method::Post,
-                format!("{}/{}", self.config.service_url(StqService::Orders), "roles"),
-                Some(body),
-                Some(headers),
-            )
+        let client = self.http_client.clone();
+        let orders_url = self.config.service_url(StqService::Orders);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<Role>(
+                        Method::Post,
+                        format!("{}/{}", orders_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    )
+                    .map_err(|e| {
+                        format_err!("Creating role in orders microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id.clone()));
             })
             .then(|res| match res {
-                Ok(role) => Ok((self, role)),
-                Err(e) => Err((
-                    self,
-                    format_err!("Creating role in orders microservice failed.")
-                        .context(Error::HttpClient(e))
-                        .into(),
-                )),
+                Ok(user) => Ok((self, user)),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
     }
 
+    fn create_merchant(self, store_id: StoreId) -> ServiceFuture<Self, Merchant> {
+        debug!("Creating merchant for store_id: {:?}", store_id);
+        let payload = CreateStoreMerchantPayload { id: store_id };
+
+        // Create store role
+        let log = self.log.clone();
+        log.lock()
+            .unwrap()
+            .push(CreateStoreOperationStage::BillingCreateMerchantStart(store_id));
+
+        let client = self.http_client.clone();
+        let billing_url = self.config.service_url(StqService::Billing);
+
+        let res = serde_json::to_string(&payload)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<Merchant>(Method::Post, format!("{}/merchants/store", billing_url), Some(body), None)
+                    .map_err(|e| {
+                        format_err!("Creating merchant in billing microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
+            .inspect(move |_| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
+            })
+            .then(|res| match res {
+                Ok(store) => Ok((self, store)),
+                Err(e) => Err((self, e)),
+            });
+
+        Box::new(res)
+    }
+
+
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
-        Box::new(self.create_store(&input).and_then(|(s, store)| {
-            let user_id = store.user_id;
-            let store_id = store.id;
-            s.create_warehouse_role(user_id, store_id)
-                .and_then(move |(s, _)| s.create_orders_role(user_id, store_id))
-                .map(|(s, _)| (s, store))
-        }))
+        Box::new(
+            self.create_store(&input)
+                .and_then(|(s, store)| {
+                    let user_id = store.user_id;
+                    let store_id = store.id;
+                    s.create_warehouse_role(user_id, store_id).map(|(s, _)| (s, store))
+                })
+                .and_then(|(s, store)| {
+                    let user_id = store.user_id;
+                    let store_id = store.id;
+                    s.create_orders_role(user_id, store_id).map(|(s, _)| (s, store))
+                })
+                .and_then(|(s, store)| s.create_merchant(StoreId(store.id)).map(|(s, _)| (s, store))),
+        )
     }
 
     // Contains reversal of Store creation
@@ -280,6 +348,32 @@ impl StoreServiceImpl {
                                 Err(e) => Err((
                                     s,
                                     format_err!("Store service create_revert StoreCreationStart error occured.")
+                                        .context(Error::HttpClient(e))
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
+                CreateStoreOperationStage::BillingCreateMerchantStart(store_id) => {
+                    debug!("Reverting merchant, store_id: {:?}", store_id);
+                    fut = Box::new(fut.and_then(move |(s, _)| {
+                        s.http_client
+                            .request::<Merchant>(
+                                Method::Delete,
+                                format!(
+                                    "{}/merchants/store/{}",
+                                    s.config.service_url(StqService::Billing),
+                                    store_id.0,
+                                ),
+                                None,
+                                None,
+                            )
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    format_err!("Account service create_revert BillingCreateMerchantStart error occured.")
                                         .context(Error::HttpClient(e))
                                         .into(),
                                 )),

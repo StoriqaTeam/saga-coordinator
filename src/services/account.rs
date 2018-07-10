@@ -63,19 +63,26 @@ impl AccountServiceImpl {
             identity: new_ident,
         };
 
-        let body = serde_json::to_string(&create_profile).unwrap();
         let log = self.log.clone();
         log.lock()
             .unwrap()
             .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg.clone()));
 
-        let res = self.http_client
-            .request::<User>(
-                Method::Post,
-                format!("{}/{}", self.config.service_url(StqService::Users), StqModel::User.to_url()),
-                Some(body),
-                None,
-            )
+        let client = self.http_client.clone();
+        let users_url = self.config.service_url(StqService::Users);
+
+        let res = serde_json::to_string(&create_profile)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<User>(Method::Post, format!("{}/{}", users_url, StqModel::User.to_url()), Some(body), None)
+                    .map_err(|e| {
+                        format_err!("Creating user in users microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
@@ -83,12 +90,7 @@ impl AccountServiceImpl {
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
-                Err(e) => Err((
-                    self,
-                    format_err!("Creating user in users microservice failed.")
-                        .context(Error::HttpClient(e))
-                        .into(),
-                )),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
@@ -152,17 +154,54 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
+    fn create_merchant(self, user_id: UserId) -> ServiceFuture<Self, Merchant> {
+        debug!("Creating merchant for user_id: {:?}", user_id);
+        let payload = CreateUserMerchantPayload { id: user_id };
+
+        // Create user role
+        let log = self.log.clone();
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::BillingCreateMerchantStart(user_id));
+
+        let client = self.http_client.clone();
+        let billing_url = self.config.service_url(StqService::Billing);
+
+        let res = serde_json::to_string(&payload)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<Merchant>(Method::Post, format!("{}/merchants/user", billing_url), Some(body), None)
+                    .map_err(|e| {
+                        format_err!("Creating merchant in billing microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
+            .inspect(move |_| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
+            })
+            .then(|res| match res {
+                Ok(user) => Ok((self, user)),
+                Err(e) => Err((self, e)),
+            });
+
+        Box::new(res)
+    }
+
     // Contains happy path for account creation
     fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
         let saga_id = Uuid::new_v4().to_string();
 
-        Box::new(self.create_user(input, saga_id).and_then({
-            |(s, user)| {
-                s.create_user_role(user.id)
-                    .map(|(s, _)| (s, user))
-                    .and_then({ |(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)) })
-            }
-        }))
+        Box::new(
+            self.create_user(input, saga_id)
+                .and_then(|(s, user)| s.create_user_role(user.id).map(|(s, _)| (s, user)))
+                .and_then(|(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)))
+                .and_then(|(s, user)| s.create_merchant(UserId(user.id)).map(|(s, _)| (s, user))),
+        )
     }
 
     // Contains reversal of account creation
@@ -213,6 +252,32 @@ impl AccountServiceImpl {
                                 Err(e) => Err((
                                     s,
                                     format_err!("Account service create_revert AccountCreationStart error occured.")
+                                        .context(Error::HttpClient(e))
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+                
+                CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
+                    debug!("Reverting merchant, user_id: {:?}", user_id);
+                    fut = Box::new(fut.and_then(move |(s, _)| {
+                        s.http_client
+                            .request::<Merchant>(
+                                Method::Delete,
+                                format!(
+                                    "{}/merchants/user/{}",
+                                    s.config.service_url(StqService::Billing),
+                                    user_id.0,
+                                ),
+                                None,
+                                None,
+                            )
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    format_err!("Account service create_revert BillingCreateMerchantStart error occured.")
                                         .context(Error::HttpClient(e))
                                         .into(),
                                 )),

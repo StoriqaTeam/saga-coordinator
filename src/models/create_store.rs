@@ -91,6 +91,14 @@ pub struct Role {
     pub role: Payload,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Hash, Serialize, Deserialize, Eq)]
+pub struct StoreId(pub i32);
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateStoreMerchantPayload {
+    pub id: StoreId,
+}
+
 pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -101,4 +109,6 @@ pub enum CreateStoreOperationStage {
     WarehousesRoleSetComplete(Uuid),
     OrdersRoleSetStart(Uuid),
     OrdersRoleSetComplete(Uuid),
+    BillingCreateMerchantStart(StoreId),
+    BillingCreateMerchantComplete(StoreId),
 }
