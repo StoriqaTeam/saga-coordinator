@@ -3,34 +3,9 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::prelude::*;
 use uuid::Uuid;
 
+use stq_static_resources::OrderStatus;
+
 use super::*;
-
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-pub enum OrderStatus {
-    #[serde(rename = "payment_awaited")]
-    PaimentAwaited,
-
-    #[serde(rename = "paid")]
-    Paid,
-
-    #[serde(rename = "in_processing")]
-    InProcessing,
-
-    #[serde(rename = "cancelled")]
-    Cancelled,
-
-    #[serde(rename = "sent")]
-    Sent,
-
-    #[serde(rename = "delivered")]
-    Delivered,
-
-    #[serde(rename = "received")]
-    Received,
-
-    #[serde(rename = "complete")]
-    Complete,
-}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ConvertCart {
@@ -54,7 +29,6 @@ impl SagaId {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateInvoice {
     pub orders: Vec<Order>,
-    #[serde(skip_serializing)]
     pub customer_id: UserId,
     pub saga_id: SagaId,
     pub currency_id: CurrencyId,
@@ -62,6 +36,9 @@ pub struct CreateInvoice {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct CurrencyId(pub i32);
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct OrderId(pub Uuid);
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct Address {
@@ -80,7 +57,7 @@ pub struct Address {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Order {
-    pub id: String,
+    pub id: OrderId,
     pub state: OrderStatus,
     #[serde(rename = "customer")]
     pub customer_id: i32,
@@ -125,4 +102,26 @@ pub enum CreateOrderOperationStage {
     OrdersConvertCartComplete(UserId),
     BillingCreateInvoiceStart(SagaId),
     BillingCreateInvoiceComplete(SagaId),
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct OrderStatusPaid {
+    state: OrderStatus,
+    comment: Option<String>,
+}
+
+impl OrderStatusPaid {
+    pub fn new() -> Self {
+        Self {
+            state: OrderStatus::Paid,
+            comment: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OrderInfo {
+    pub order_id: OrderId,
+    pub customer_id: UserId,
+    pub store_id: StoreId,
 }

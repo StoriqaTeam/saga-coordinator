@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use failure::Error as FailureError;
 use futures;
+use futures::future::join_all;
 use futures::prelude::*;
 use hyper::header::Authorization;
 use hyper::Headers;
@@ -19,6 +21,7 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Option<BillingOrders>>;
+    fn set_paid(&self, order_ids: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -138,7 +141,7 @@ impl OrderServiceImpl {
                 customer_id: input.customer_id,
                 orders,
                 currency_id: input.currency_id,
-                saga_id: SagaId::new()
+                saga_id: SagaId::new(),
             };
             s.create_invoice(create_invoice)
         }))
@@ -190,11 +193,7 @@ impl OrderServiceImpl {
                         s.http_client
                             .request::<UserId>(
                                 Method::Delete,
-                                format!(
-                                    "{}/invoices/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    saga_id.0.clone(),
-                                ),
+                                format!("{}/invoices/{}", s.config.service_url(StqService::Billing), saga_id.0.clone(),),
                                 None,
                                 Some(headers),
                             )
@@ -233,5 +232,37 @@ impl OrderService for OrderServiceImpl {
                     })
                 }),
         )
+    }
+
+    fn set_paid(&self, orders_info: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>> {
+        // set paid
+        debug!("Set orders paid : {:?}", orders_info);
+
+        let client = self.http_client.clone();
+        let orders_url = self.config.service_url(StqService::Orders);
+
+        let orders_futures: Vec<Box<Future<Item = (), Error = FailureError>>> = orders_info
+            .into_iter()
+            .map(|order_info| {
+                let payload = OrderStatusPaid::new();
+
+                let body = serde_json::to_string(&payload).unwrap_or_default();
+                let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order_info.order_id.0);
+                let mut headers = Headers::new();
+                headers.set(Authorization(order_info.customer_id.0.to_string()));
+
+                let res = client
+                    .request::<Option<Order>>(Method::Post, url, Some(body), Some(headers))
+                    .map_err(|e| {
+                        format_err!("Setting paid in orders microservice error occured.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+                    .map(|_| ());
+                Box::new(res) as Box<Future<Item = (), Error = FailureError>>
+            })
+            .collect();
+
+        Box::new(join_all(orders_futures).map(|_| "Ok".to_string()))
     }
 }

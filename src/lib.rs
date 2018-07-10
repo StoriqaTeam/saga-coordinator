@@ -3,6 +3,7 @@ extern crate config as config_crate;
 extern crate stq_http;
 extern crate stq_router;
 extern crate stq_routes;
+extern crate stq_static_resources;
 
 extern crate env_logger;
 #[macro_use]

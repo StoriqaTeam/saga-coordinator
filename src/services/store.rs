@@ -242,7 +242,6 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-
     // Contains happy path for Store creation
     fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
         Box::new(
@@ -361,11 +360,7 @@ impl StoreServiceImpl {
                         s.http_client
                             .request::<Merchant>(
                                 Method::Delete,
-                                format!(
-                                    "{}/merchants/store/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    store_id.0,
-                                ),
+                                format!("{}/merchants/store/{}", s.config.service_url(StqService::Billing), store_id.0,),
                                 None,
                                 None,
                             )

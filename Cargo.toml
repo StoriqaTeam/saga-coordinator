@@ -27,6 +27,7 @@ serde = "^1.0.8"
 stq_routes = { path = "vendor/libstqbackend/routes" }
 stq_router = { path = "vendor/libstqbackend/router" }
 stq_http = { path = "vendor/libstqbackend/http" }
+stq_static_resources = { path = "vendor/libstqbackend/static_resources" }
 tokio-core = "0.1"
 uuid = { version = "*", features = ["use_std", "v4", "serde"] }
 validator = "0.6.3"

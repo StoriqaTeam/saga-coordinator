@@ -258,18 +258,14 @@ impl AccountServiceImpl {
                             })
                     }));
                 }
-                
+
                 CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
                     debug!("Reverting merchant, user_id: {:?}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<Merchant>(
                                 Method::Delete,
-                                format!(
-                                    "{}/merchants/user/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    user_id.0,
-                                ),
+                                format!("{}/merchants/user/{}", s.config.service_url(StqService::Billing), user_id.0,),
                                 None,
                                 None,
                             )
