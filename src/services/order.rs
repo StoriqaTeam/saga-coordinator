@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
 use futures;
+use futures::future;
 use futures::future::join_all;
 use futures::prelude::*;
 use hyper::header::Authorization;
@@ -21,7 +22,7 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Option<BillingOrders>>;
-    fn set_paid(&self, order_ids: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>>;
+    fn set_paid(self, order_ids: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -234,35 +235,145 @@ impl OrderService for OrderServiceImpl {
         )
     }
 
-    fn set_paid(&self, orders_info: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>> {
+    fn set_paid(self, orders_info: Vec<OrderInfo>) -> Box<Future<Item = String, Error = FailureError>> {
         // set paid
         debug!("Set orders paid : {:?}", orders_info);
 
         let client = self.http_client.clone();
         let orders_url = self.config.service_url(StqService::Orders);
+        let notifications_url = self.config.service_url(StqService::Notifications);
+        let users_url = self.config.service_url(StqService::Users);
+        let stores_url = self.config.service_url(StqService::Stores);
 
-        let orders_futures: Vec<Box<Future<Item = (), Error = FailureError>>> = orders_info
-            .into_iter()
-            .map(|order_info| {
-                let payload = OrderStatusPaid::new();
+        let payload = OrderStatusPaid::new();
+        let res = serde_json::to_string(&payload)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                let mut orders_futures = vec![];
+                for order_info in orders_info {
+                    let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order_info.order_id.0);
+                    let mut headers = Headers::new();
+                    headers.set(Authorization(order_info.customer_id.0.to_string()));
+                    let res = client
+                        .request::<Option<Order>>(Method::Post, url, Some(body.clone()), Some(headers))
+                        .map_err(|e| {
+                            format_err!("Setting paid in orders microservice error occured.")
+                                .context(Error::HttpClient(e))
+                                .into()
+                        })
+                        .and_then({
+                            let client = client.clone();
+                            let order_id = order_info.order_id.0;
+                            let customer_id = order_info.customer_id.0;
+                            let store_id = order_info.store_id.0;
+                            let users_url = users_url.clone();
+                            let stores_url = stores_url.clone();
+                            let notifications_url = notifications_url.clone();
 
-                let body = serde_json::to_string(&payload).unwrap_or_default();
-                let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order_info.order_id.0);
-                let mut headers = Headers::new();
-                headers.set(Authorization(order_info.customer_id.0.to_string()));
+                            move |order| {
+                                if let Some(order) = order {
+                                    let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), order.customer_id);
+                                    let send_to_client = client
+                                        .request::<Option<User>>(Method::Get, url, None, None)
+                                        .map_err(From::from)
+                                        .and_then({
+                                            let client = client.clone();
+                                            let notifications_url = notifications_url.clone();
+                                            move |user| {
+                                                if let Some(user) = user {
+                                                    let to = user.email.clone();
+                                                    let subject = format!("Paiment for order {} is received.", order_id);
+                                                    let text = format!("You have successfully paid for order {}. You can watch current order state on your orders page.", order_id);
+                                                    let url = format!("{}/sendmail", notifications_url);
+                                                    Box::new(
+                                                        serde_json::to_string(&ResetMail { to, subject, text })
+                                                            .map_err(From::from)
+                                                            .into_future()
+                                                            .and_then(move |body| {
+                                                                client
+                                                                    .request::<String>(Method::Post, url, Some(body), None)
+                                                                    .map_err(From::from)
+                                                            }),
+                                                    )
+                                                        as Box<Future<Item = String, Error = FailureError>>
+                                                } else {
+                                                    error!(
+                                                        "Sending notification to user can not be done. User with id: {} is not found.",
+                                                        customer_id
+                                                    );
+                                                    Box::new(future::err(
+                                                        format_err!("User is not found in users microservice.")
+                                                            .context(Error::NotFound)
+                                                            .into(),
+                                                    ))
+                                                }
+                                            }
+                                        })
+                                        .map(|_| ());
 
-                let res = client
-                    .request::<Option<Order>>(Method::Post, url, Some(body), Some(headers))
-                    .map_err(|e| {
-                        format_err!("Setting paid in orders microservice error occured.")
-                            .context(Error::HttpClient(e))
-                            .into()
-                    })
-                    .map(|_| ());
-                Box::new(res) as Box<Future<Item = (), Error = FailureError>>
-            })
-            .collect();
+                                    let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), order.store_id);
+                                    let send_to_store = client
+                                        .request::<Option<Store>>(Method::Get, url, None, None)
+                                        .map_err(From::from)
+                                        .and_then({
+                                            let client = client.clone();
+                                            let notifications_url = notifications_url.clone();
+                                            move |store| {
+                                                if let Some(store) = store {
+                                                    if let Some(email) = store.email {
+                                                        let to = email;
+                                                        let subject = format!("Paiment for order {} is received.", order_id);
+                                                        let text = format!("Customer have successfully paid for order {}. Please, send the order to customer and change orders' state. Don't forget to write the correct track id.", order_id);
+                                                        let url = format!("{}/sendmail", notifications_url);
+                                                        Box::new(
+                                                            serde_json::to_string(&ResetMail { to, subject, text })
+                                                                .map_err(From::from)
+                                                                .into_future()
+                                                                .and_then(move |body| {
+                                                                    client
+                                                                        .request::<String>(Method::Post, url, Some(body), None)
+                                                                        .map_err(From::from)
+                                                                }),
+                                                        )
+                                                            as Box<Future<Item = String, Error = FailureError>>
+                                                    } else {
+                                                        Box::new(future::ok(String::default()))
+                                                    }
+                                                } else {
+                                                    error!(
+                                                        "Sending notification to store can not be done. Store with id: {} is not found.",
+                                                        store_id
+                                                    );
+                                                    Box::new(future::err(
+                                                        format_err!("Store is not found in stores microservice.")
+                                                            .context(Error::NotFound)
+                                                            .into(),
+                                                    ))
+                                                }
+                                            }
+                                        })
+                                        .map(|_| ());
+                                    Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())))
+                                        as Box<Future<Item = (), Error = FailureError>>
+                                } else {
+                                    Box::new(future::err(
+                                        format_err!("Order is not found in orders microservice! id: {}", order_info.order_id.0)
+                                            .context(Error::NotFound)
+                                            .into(),
+                                    ))
+                                }
+                            }
+                        });
+                    orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
+                }
 
-        Box::new(join_all(orders_futures).map(|_| "Ok".to_string()))
+                join_all(orders_futures)
+            });
+
+        Box::new(
+            res.map(|_| "Ok".to_string())
+                .map_err(|e: FailureError| e.context(format!("Setting orders status paid error.")).into()),
+        )
     }
 }

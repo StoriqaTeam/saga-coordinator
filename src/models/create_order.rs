@@ -125,3 +125,10 @@ pub struct OrderInfo {
     pub customer_id: UserId,
     pub store_id: StoreId,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResetMail {
+    pub to: String,
+    pub subject: String,
+    pub text: String,
+}
