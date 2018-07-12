@@ -5,7 +5,7 @@ pub enum Route {
     CreateAccount,
     CreateStore,
     CreateOrder,
-    SetOrdersPaid,
+    OrdersUpdateStateByBilling,
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -17,7 +17,7 @@ pub fn create_route_parser() -> RouteParser<Route> {
 
     router.add_route(r"^/create_order$", || Route::CreateOrder);
 
-    router.add_route(r"^/orders/set_paid$", || Route::SetOrdersPaid);
+    router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);
 
     router
 }

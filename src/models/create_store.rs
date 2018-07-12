@@ -1,21 +1,15 @@
 use std::time::SystemTime;
 
 use serde_json;
-use uuid::Uuid;
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
-pub enum Status {
-    Draft,
-    Moderation,
-    Decline,
-    Published,
-}
+use stq_static_resources::ModerationStatus;
+use stq_types::{RoleEntryId, StoreId, UserId};
 
 /// Payload for querying stores
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Store {
-    pub id: i32,
-    pub user_id: i32,
+    pub id: StoreId,
+    pub user_id: UserId,
     pub is_active: bool,
     pub name: serde_json::Value,
     pub short_description: serde_json::Value,
@@ -36,7 +30,7 @@ pub struct Store {
     pub rating: f64,
     pub country: Option<String>,
     pub product_categories: Option<serde_json::Value>,
-    pub status: Status,
+    pub status: ModerationStatus,
     pub administrative_area_level_1: Option<String>,
     pub administrative_area_level_2: Option<String>,
     pub locality: Option<String>,
@@ -50,7 +44,7 @@ pub struct Store {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewStore {
     pub name: serde_json::Value,
-    pub user_id: i32,
+    pub user_id: UserId,
     pub short_description: serde_json::Value,
     pub long_description: Option<serde_json::Value>,
     pub slug: String,
@@ -79,20 +73,17 @@ pub struct NewStore {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Payload {
     pub name: String,
-    pub data: i32,
+    pub data: StoreId,
 }
 
 pub type NewRole = Payload;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Role {
-    pub id: Uuid,
-    pub user_id: i32,
+    pub id: RoleEntryId,
+    pub user_id: UserId,
     pub role: Payload,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Hash, Serialize, Deserialize, Eq)]
-pub struct StoreId(pub i32);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateStoreMerchantPayload {
@@ -103,12 +94,12 @@ pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CreateStoreOperationStage {
-    StoreCreationStart(i32),
-    StoreCreationComplete(i32),
-    WarehousesRoleSetStart(Uuid),
-    WarehousesRoleSetComplete(Uuid),
-    OrdersRoleSetStart(Uuid),
-    OrdersRoleSetComplete(Uuid),
+    StoreCreationStart(UserId),
+    StoreCreationComplete(UserId),
+    WarehousesRoleSetStart(RoleEntryId),
+    WarehousesRoleSetComplete(RoleEntryId),
+    OrdersRoleSetStart(RoleEntryId),
+    OrdersRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(StoreId),
     BillingCreateMerchantComplete(StoreId),
 }

@@ -6,7 +6,6 @@ use futures;
 use futures::prelude::*;
 use hyper::Method;
 use serde_json;
-use uuid::Uuid;
 use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -14,6 +13,7 @@ use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
+use stq_types::{SagaId, UserId};
 
 use config;
 use errors::Error;
@@ -38,8 +38,8 @@ impl AccountServiceImpl {
         Self { http_client, config, log }
     }
 
-    fn create_user(self, input: SagaCreateProfile, saga_id_arg: String) -> ServiceFuture<Self, User> {
-        debug!("Creating user, input: {:?}, saga id: {}", input, saga_id_arg);
+    fn create_user(self, input: SagaCreateProfile, saga_id_arg: SagaId) -> ServiceFuture<Self, User> {
+        debug!("Creating user, input: {}, saga id: {}", input, saga_id_arg);
         // Create account
         let new_ident = NewIdentity {
             provider: input.identity.provider,
@@ -96,7 +96,7 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_user_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
+    fn create_user_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
         debug!("Creating user role for user_id: {}", user_id);
         // Create user role
         let log = self.log.clone();
@@ -125,7 +125,7 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_store_role(self, user_id: i32) -> ServiceFuture<Self, StqUserRole> {
+    fn create_store_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
         debug!("Creating store user role for user_id: {}", user_id);
         // Create store role
         let log = self.log.clone();
@@ -155,7 +155,7 @@ impl AccountServiceImpl {
     }
 
     fn create_merchant(self, user_id: UserId) -> ServiceFuture<Self, Merchant> {
-        debug!("Creating merchant for user_id: {:?}", user_id);
+        debug!("Creating merchant for user_id: {}", user_id);
         let payload = CreateUserMerchantPayload { id: user_id };
 
         // Create user role
@@ -194,13 +194,13 @@ impl AccountServiceImpl {
 
     // Contains happy path for account creation
     fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
-        let saga_id = Uuid::new_v4().to_string();
+        let saga_id = SagaId::new();
 
         Box::new(
             self.create_user(input, saga_id)
                 .and_then(|(s, user)| s.create_user_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)))
-                .and_then(|(s, user)| s.create_merchant(UserId(user.id)).map(|(s, _)| (s, user))),
+                .and_then(|(s, user)| s.create_merchant(user.id).map(|(s, _)| (s, user))),
         )
     }
 
@@ -260,7 +260,7 @@ impl AccountServiceImpl {
                 }
 
                 CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
-                    debug!("Reverting merchant, user_id: {:?}", user_id);
+                    debug!("Reverting merchant, user_id: {}", user_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<Merchant>(

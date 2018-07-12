@@ -25,7 +25,7 @@ use stq_router::RouteParser;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use models::{ConvertCart, NewStore, OrderInfo, SagaCreateProfile};
+use models::{BillingOrdersVec, ConvertCart, NewStore, SagaCreateProfile};
 use services::account::{AccountService, AccountServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
 use services::store::{StoreService, StoreServiceImpl};
@@ -98,8 +98,8 @@ impl Controller for ControllerImpl {
                     }),
             ),
 
-            (&Method::Post, Some(Route::SetOrdersPaid)) => serialize_future(
-                parse_body::<Vec<OrderInfo>>(req.body())
+            (&Method::Post, Some(Route::OrdersUpdateStateByBilling)) => serialize_future(
+                parse_body::<BillingOrdersVec>(req.body())
                     .map_err(|e| {
                         FailureError::from(
                             e.context("Parsing body // POST /create_order in ConvertCart failed!")
@@ -108,7 +108,7 @@ impl Controller for ControllerImpl {
                     })
                     .and_then(move |orders_info| {
                         order_service
-                            .set_paid(orders_info)
+                            .update_state(orders_info)
                             .map_err(|e| FailureError::from(e.context("Error during order creation in saga occured.")))
                     }),
             ),

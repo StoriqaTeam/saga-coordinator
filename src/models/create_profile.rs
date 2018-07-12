@@ -1,8 +1,10 @@
+use std::fmt;
 use std::str::FromStr;
 use std::time::SystemTime;
 
 use chrono::NaiveDate;
-use uuid::Uuid;
+
+use stq_types::{MerchantId, SagaId, UserId, UsersRole};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -24,7 +26,7 @@ impl FromStr for Gender {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
-    pub id: i32,
+    pub id: UserId,
     pub email: String,
     pub email_verified: bool,
     pub phone: Option<String>,
@@ -38,7 +40,7 @@ pub struct User {
     pub last_login_at: SystemTime,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
-    pub saga_id: String,
+    pub saga_id: SagaId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,7 +53,7 @@ pub struct NewUser {
     pub gender: Gender,
     pub birthdate: Option<NaiveDate>,
     pub last_login_at: SystemTime,
-    pub saga_id: String,
+    pub saga_id: SagaId,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +68,22 @@ pub struct NewIdentity {
     pub email: String,
     pub password: Option<String>,
     pub provider: Provider,
-    pub saga_id: String,
+    pub saga_id: SagaId,
+}
+
+impl fmt::Display for NewIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "NewIdentity: 
+        email: {},
+        password: '****',
+        provider: {:?},
+        saga_id: {},
+        )",
+            self.email, self.provider, self.saga_id,
+        )
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -75,35 +92,29 @@ pub struct SagaCreateProfile {
     pub identity: NewIdentity,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
-pub enum Role {
-    Superuser,
-    User,
+impl fmt::Display for SagaCreateProfile {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SagaCreateProfile - user: {:?}, identity: {})", self.user, self.identity)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct NewUserRole {
-    pub user_id: i32,
-    pub role: Role,
+    pub user_id: UserId,
+    pub role: UsersRole,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct UserRole {
     pub id: i32,
-    pub user_id: i32,
-    pub role: Role,
+    pub user_id: UserId,
+    pub role: UsersRole,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Hash, Serialize, Deserialize, Eq)]
-pub struct UserId(pub i32);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateUserMerchantPayload {
     pub id: UserId,
 }
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct MerchantId(pub Uuid);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Merchant {
@@ -114,12 +125,12 @@ pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CreateProfileOperationStage {
-    AccountCreationStart(String),
-    AccountCreationComplete(String),
-    UsersRoleSetStart(i32),
-    UsersRoleSetComplete(i32),
-    StoreRoleSetStart(i32),
-    StoreRoleSetComplete(i32),
+    AccountCreationStart(SagaId),
+    AccountCreationComplete(SagaId),
+    UsersRoleSetStart(UserId),
+    UsersRoleSetComplete(UserId),
+    StoreRoleSetStart(UserId),
+    StoreRoleSetComplete(UserId),
     BillingCreateMerchantStart(UserId),
     BillingCreateMerchantComplete(UserId),
 }

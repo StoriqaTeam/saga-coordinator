@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
+use std::fmt;
+use std::time::SystemTime;
 
 use chrono::prelude::*;
-use uuid::Uuid;
 
-use stq_static_resources::OrderStatus;
-
-use super::*;
+use stq_static_resources::OrderState;
+use stq_types::{CurrencyId, InvoiceId, OrderId, ProductPrice, SagaId, StoreId, UserId};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ConvertCart {
@@ -17,15 +17,6 @@ pub struct ConvertCart {
     pub currency_id: CurrencyId,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct SagaId(pub Uuid);
-
-impl SagaId {
-    pub fn new() -> Self {
-        SagaId(Uuid::new_v4())
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateInvoice {
     pub orders: Vec<Order>,
@@ -34,11 +25,15 @@ pub struct CreateInvoice {
     pub currency_id: CurrencyId,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct CurrencyId(pub i32);
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct OrderId(pub Uuid);
+impl fmt::Display for CreateInvoice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CreateInvoice - orders: {:?}, customer_id: {}, saga_id: {}, currency_id: {})",
+            self.orders, self.customer_id, self.saga_id, self.currency_id
+        )
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct Address {
@@ -58,7 +53,7 @@ pub struct Address {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Order {
     pub id: OrderId,
-    pub state: OrderStatus,
+    pub state: OrderState,
     #[serde(rename = "customer")]
     pub customer_id: i32,
     #[serde(rename = "product")]
@@ -104,26 +99,56 @@ pub enum CreateOrderOperationStage {
     BillingCreateInvoiceComplete(SagaId),
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
-pub struct OrderStatusPaid {
-    state: OrderStatus,
-    comment: Option<String>,
-}
-
-impl OrderStatusPaid {
-    pub fn new() -> Self {
-        Self {
-            state: OrderStatus::Paid,
-            comment: None,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OrderInfo {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BillingOrderInfo {
     pub order_id: OrderId,
     pub customer_id: UserId,
     pub store_id: StoreId,
+    pub status: OrderState,
+}
+
+impl fmt::Display for BillingOrderInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "BillingOrderInfo - order_id: {}, customer_id: {}, store_id: {}, status: {})",
+            self.order_id, self.customer_id, self.store_id, self.status
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BillingOrdersVec(pub Vec<BillingOrderInfo>);
+impl fmt::Display for BillingOrdersVec {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut comma_separated = String::new();
+
+        for num in &self.0[0..self.0.len() - 1] {
+            comma_separated.push_str(&num.to_string());
+            comma_separated.push_str(", ");
+        }
+
+        comma_separated.push_str(&self.0[self.0.len() - 1].to_string());
+        write!(f, "{}", comma_separated)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UpdateStatePayload {
+    pub state: OrderState,
+    pub track_id: Option<String>,
+    pub comment: Option<String>,
+}
+
+impl From<BillingOrderInfo> for UpdateStatePayload {
+    fn from(order_info: BillingOrderInfo) -> Self {
+        let comment = Some(format!("State changed to {} by billing service.", order_info.status).to_string());
+        Self {
+            state: order_info.status,
+            track_id: None,
+            comment,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -131,4 +156,17 @@ pub struct ResetMail {
     pub to: String,
     pub subject: String,
     pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Invoice {
+    pub invoice_id: InvoiceId,
+    pub billing_url: String,
+    pub transaction_id: Option<String>,
+    pub transaction_captured_amount: Option<ProductPrice>,
+    pub amount: ProductPrice,
+    pub currency_id: CurrencyId,
+    pub price_reserved: SystemTime,
+    pub state: OrderState,
+    pub wallet: String,
 }

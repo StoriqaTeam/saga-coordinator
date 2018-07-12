@@ -10,7 +10,6 @@ use hyper::Method;
 use hyper::StatusCode;
 
 use serde_json;
-use uuid::Uuid;
 use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -18,6 +17,7 @@ use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
+use stq_types::{RoleEntryId, StoreId, UserId};
 
 use config;
 use errors::Error;
@@ -92,12 +92,12 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_warehouse_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, Role> {
+    fn create_warehouse_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, Role> {
         // Create warehouse role
         debug!("Creating warehouse role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
-        let new_role_id = Uuid::new_v4();
+        let new_role_id = RoleEntryId::new();
         let role_payload = NewRole {
             name: "StoreManager".to_string(),
             data: store_id,
@@ -148,12 +148,12 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_orders_role(self, user_id: i32, store_id: i32) -> ServiceFuture<Self, Role> {
+    fn create_orders_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, Role> {
         // Create orders role
         debug!("Creating orders role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
-        let new_role_id = Uuid::new_v4();
+        let new_role_id = RoleEntryId::new();
         let role_payload = NewRole {
             name: "StoreManager".to_string(),
             data: store_id,
@@ -205,7 +205,7 @@ impl StoreServiceImpl {
     }
 
     fn create_merchant(self, store_id: StoreId) -> ServiceFuture<Self, Merchant> {
-        debug!("Creating merchant for store_id: {:?}", store_id);
+        debug!("Creating merchant for store_id: {}", store_id);
         let payload = CreateStoreMerchantPayload { id: store_id };
 
         // Create store role
@@ -256,7 +256,7 @@ impl StoreServiceImpl {
                     let store_id = store.id;
                     s.create_orders_role(user_id, store_id).map(|(s, _)| (s, store))
                 })
-                .and_then(|(s, store)| s.create_merchant(StoreId(store.id)).map(|(s, _)| (s, store))),
+                .and_then(|(s, store)| s.create_merchant(store.id).map(|(s, _)| (s, store))),
         )
     }
 
@@ -355,7 +355,7 @@ impl StoreServiceImpl {
                 }
 
                 CreateStoreOperationStage::BillingCreateMerchantStart(store_id) => {
-                    debug!("Reverting merchant, store_id: {:?}", store_id);
+                    debug!("Reverting merchant, store_id: {}", store_id);
                     fut = Box::new(fut.and_then(move |(s, _)| {
                         s.http_client
                             .request::<Merchant>(
