@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use failure::{Context, Error as FailureError, Fail};
 use futures;
 use futures::prelude::*;
+use hyper::header::Authorization;
+use hyper::Headers;
 use hyper::Method;
 use serde_json;
 use validator::{ValidationError, ValidationErrors};
@@ -171,8 +173,11 @@ impl AccountServiceImpl {
             .into_future()
             .map_err(From::from)
             .and_then(move |body| {
+                let mut headers = Headers::new();
+                headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
+
                 client
-                    .request::<Merchant>(Method::Post, format!("{}/merchants/user", billing_url), Some(body), None)
+                    .request::<Merchant>(Method::Post, format!("{}/merchants/user", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
                         format_err!("Creating merchant in billing microservice failed.")
                             .context(Error::HttpClient(e))

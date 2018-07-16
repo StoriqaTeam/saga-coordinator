@@ -121,14 +121,7 @@ impl fmt::Display for BillingOrderInfo {
 pub struct BillingOrdersVec(pub Vec<BillingOrderInfo>);
 impl fmt::Display for BillingOrdersVec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut comma_separated = String::new();
-
-        for num in &self.0[0..self.0.len() - 1] {
-            comma_separated.push_str(&num.to_string());
-            comma_separated.push_str(", ");
-        }
-
-        comma_separated.push_str(&self.0[self.0.len() - 1].to_string());
+        let comma_separated = self.0.iter().fold("".to_string(), |acc, i| format!("{}, {}", acc, i));
         write!(f, "{}", comma_separated)
     }
 }

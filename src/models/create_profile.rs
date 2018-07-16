@@ -79,8 +79,7 @@ impl fmt::Display for NewIdentity {
         email: {},
         password: '****',
         provider: {:?},
-        saga_id: {},
-        )",
+        saga_id: {}",
             self.email, self.provider, self.saga_id,
         )
     }
@@ -94,7 +93,7 @@ pub struct SagaCreateProfile {
 
 impl fmt::Display for SagaCreateProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SagaCreateProfile - user: {:?}, identity: {})", self.user, self.identity)
+        write!(f, "SagaCreateProfile - user: {:#?}, identity: {})", self.user, self.identity)
     }
 }
 

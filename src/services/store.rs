@@ -221,8 +221,10 @@ impl StoreServiceImpl {
             .into_future()
             .map_err(From::from)
             .and_then(move |body| {
+                let mut headers = Headers::new();
+                headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
                 client
-                    .request::<Merchant>(Method::Post, format!("{}/merchants/store", billing_url), Some(body), None)
+                    .request::<Merchant>(Method::Post, format!("{}/merchants/store", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
                         format_err!("Creating merchant in billing microservice failed.")
                             .context(Error::HttpClient(e))
