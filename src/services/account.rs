@@ -99,7 +99,7 @@ impl AccountServiceImpl {
     }
 
     fn create_user_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
-        debug!("Creating user role for user_id: {}", user_id);
+        debug!("Creating user role for user_id: {} in users microservice", user_id);
         // Create user role
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
@@ -128,7 +128,7 @@ impl AccountServiceImpl {
     }
 
     fn create_store_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
-        debug!("Creating store user role for user_id: {}", user_id);
+        debug!("Creating user role for user_id: {} in stores microservice", user_id);
         // Create store role
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
@@ -157,7 +157,7 @@ impl AccountServiceImpl {
     }
 
     fn create_merchant(self, user_id: UserId) -> ServiceFuture<Self, Merchant> {
-        debug!("Creating merchant for user_id: {}", user_id);
+        debug!("Creating merchant for user_id: {} in billing microservice", user_id);
         let payload = CreateUserMerchantPayload { id: user_id };
 
         // Create user role
@@ -217,7 +217,11 @@ impl AccountServiceImpl {
             match e {
                 CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
                     debug!("Reverting users role, user_id: {}", user_id);
-                    fut = Box::new(fut.and_then(move |(s, _)| {
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
@@ -239,7 +243,11 @@ impl AccountServiceImpl {
 
                 CreateProfileOperationStage::AccountCreationStart(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
-                    fut = Box::new(fut.and_then(move |(s, _)| {
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
@@ -266,7 +274,11 @@ impl AccountServiceImpl {
 
                 CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
                     debug!("Reverting merchant, user_id: {}", user_id);
-                    fut = Box::new(fut.and_then(move |(s, _)| {
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
                         s.http_client
                             .request::<Merchant>(
                                 Method::Delete,

@@ -45,14 +45,15 @@ impl OrderServiceImpl {
         }
     }
 
-    fn convert_cart(self, input: &ConvertCart) -> ServiceFuture<Self, Vec<Order>> {
+    fn convert_cart(self, input: ConvertCart) -> ServiceFuture<Self, Vec<Order>> {
         // Create Order
         debug!("Converting cart, input: {:?}", input);
+        let convert_cart: ConvertCartWithConversionId = input.into();
+        let convertion_id = convert_cart.conversion_id;
         let log = self.log.clone();
-        let customer_id = input.customer_id;
         log.lock()
             .unwrap()
-            .push(CreateOrderOperationStage::OrdersConvertCartStart(customer_id));
+            .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
         let mut headers = Headers::new();
         if let Some(ref user_id) = self.user_id {
@@ -62,7 +63,7 @@ impl OrderServiceImpl {
         let orders_url = self.config.service_url(StqService::Orders);
         let client = self.http_client.clone();
 
-        let res = serde_json::to_string(input)
+        let res = serde_json::to_string(&convert_cart)
             .into_future()
             .map_err(From::from)
             .and_then(move |body| {
@@ -82,7 +83,7 @@ impl OrderServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateOrderOperationStage::OrdersConvertCartComplete(customer_id));
+                    .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -137,7 +138,7 @@ impl OrderServiceImpl {
 
     // Contains happy path for Order creation
     fn create_happy(self, input: ConvertCart) -> ServiceFuture<Self, Invoice> {
-        Box::new(self.convert_cart(&input).and_then(move |(s, orders)| {
+        Box::new(self.convert_cart(input.clone()).and_then(move |(s, orders)| {
             let create_invoice = CreateInvoice {
                 customer_id: input.customer_id,
                 orders,
@@ -155,22 +156,29 @@ impl OrderServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log.into_iter() {
             match e {
-                CreateOrderOperationStage::OrdersConvertCartStart(customer_id) => {
-                    debug!("Reverting cart convertion, customer_id: {}", customer_id);
-                    fut = Box::new(fut.and_then(move |(s, _)| {
+                CreateOrderOperationStage::OrdersConvertCartStart(conversion_id) => {
+                    debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can revert orders
 
+                        let payload = ConvertCartRevert { conversion_id };
+                        let body = serde_json::to_string(&payload).unwrap_or_default();
+
                         s.http_client
                             .request::<CartHash>(
-                                Method::Delete,
+                                Method::Post,
                                 format!(
-                                    "{}/{}/by-customer-id/{}",
+                                    "{}/{}/create_from_cart/revert",
                                     s.config.service_url(StqService::Orders),
-                                    StqModel::Order.to_url(),
-                                    customer_id.0.clone(),
+                                    StqModel::Order.to_url()
                                 ),
-                                None,
+                                Some(body),
                                 Some(headers),
                             )
                             .then(|res| match res {
@@ -187,7 +195,11 @@ impl OrderServiceImpl {
 
                 CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id) => {
                     debug!("Reverting create invoice, saga_id: {}", saga_id);
-                    fut = Box::new(fut.and_then(move |(s, _)| {
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string())); // only super admin can revert invoice
 

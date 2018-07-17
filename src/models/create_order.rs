@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use chrono::prelude::*;
 
 use stq_static_resources::OrderState;
-use stq_types::{CurrencyId, InvoiceId, OrderId, ProductPrice, SagaId, StoreId, UserId};
+use stq_types::{ConversionId, CurrencyId, InvoiceId, OrderId, ProductPrice, SagaId, StoreId, UserId};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ConvertCart {
@@ -15,6 +15,27 @@ pub struct ConvertCart {
     pub receiver_name: String,
     pub prices: CartProductWithPriceHash,
     pub currency_id: CurrencyId,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct ConvertCartWithConversionId {
+    pub conversion_id: ConversionId,
+    #[serde(flatten)]
+    pub convert_cart: ConvertCart,
+}
+
+impl From<ConvertCart> for ConvertCartWithConversionId {
+    fn from(convert_cart: ConvertCart) -> ConvertCartWithConversionId {
+        ConvertCartWithConversionId {
+            convert_cart,
+            conversion_id: ConversionId::new(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct ConvertCartRevert {
+    pub conversion_id: ConversionId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -93,8 +114,8 @@ pub type CartHash = BTreeMap<i32, OrdersCartItemInfo>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CreateOrderOperationStage {
-    OrdersConvertCartStart(UserId),
-    OrdersConvertCartComplete(UserId),
+    OrdersConvertCartStart(ConversionId),
+    OrdersConvertCartComplete(ConversionId),
     BillingCreateInvoiceStart(SagaId),
     BillingCreateInvoiceComplete(SagaId),
 }
@@ -153,13 +174,13 @@ pub struct ResetMail {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Invoice {
+    pub id: SagaId,
     pub invoice_id: InvoiceId,
-    pub billing_url: String,
     pub transaction_id: Option<String>,
-    pub transaction_captured_amount: Option<ProductPrice>,
+    pub transaction_captured_amount: ProductPrice,
     pub amount: ProductPrice,
     pub currency_id: CurrencyId,
     pub price_reserved: SystemTime,
     pub state: OrderState,
-    pub wallet: String,
+    pub wallet: Option<String>,
 }

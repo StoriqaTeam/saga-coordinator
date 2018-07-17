@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use serde_json;
 
 use stq_static_resources::ModerationStatus;
-use stq_types::{RoleEntryId, StoreId, UserId};
+use stq_types::{RoleEntryId, StoreId, StoresRole, UserId};
 
 /// Payload for querying stores
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -72,7 +72,7 @@ pub struct NewStore {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Payload {
-    pub name: String,
+    pub name: StoresRole,
     pub data: StoreId,
 }
 
@@ -83,6 +83,14 @@ pub struct Role {
     pub id: RoleEntryId,
     pub user_id: UserId,
     pub role: Payload,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BillingRole {
+    pub id: RoleEntryId,
+    pub user_id: UserId,
+    pub name: StoresRole,
+    pub data: StoreId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,6 +108,8 @@ pub enum CreateStoreOperationStage {
     WarehousesRoleSetComplete(RoleEntryId),
     OrdersRoleSetStart(RoleEntryId),
     OrdersRoleSetComplete(RoleEntryId),
+    BillingRoleSetStart(RoleEntryId),
+    BillingRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(StoreId),
     BillingCreateMerchantComplete(StoreId),
 }
