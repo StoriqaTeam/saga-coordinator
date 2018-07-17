@@ -1,9 +1,5 @@
 extern crate chrono;
 extern crate config as config_crate;
-extern crate stq_http;
-extern crate stq_router;
-extern crate stq_routes;
-
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -19,6 +15,12 @@ extern crate serde_json;
 extern crate tokio_core;
 extern crate uuid;
 extern crate validator;
+
+extern crate stq_http;
+extern crate stq_router;
+extern crate stq_routes;
+extern crate stq_static_resources;
+extern crate stq_types;
 
 pub mod config;
 mod controller;
