@@ -292,8 +292,11 @@ impl OrderService for OrderServiceImpl {
                                     move |user| {
                                         if let Some(user) = user {
                                             let to = user.email.clone();
-                                            let subject = format!("Paiment for order {} is received.", order_id);
-                                            let text = format!("You have successfully paid for order {}. You can watch current order state on your orders page.", order_id);
+                                            let subject = format!("Changed order {} state.", order_id);
+                                            let text = format!(
+                                                "Order {} has changed it's state. You can watch current order state on your orders page.",
+                                                order_id
+                                            );
                                             let url = format!("{}/sendmail", notifications_url);
                                             Box::new(
                                                 serde_json::to_string(&ResetMail { to, subject, text })
@@ -330,11 +333,9 @@ impl OrderService for OrderServiceImpl {
                                         if let Some(store) = store {
                                             if let Some(email) = store.email {
                                                 let to = email;
-                                                let subject = format!("Paiment for order {} is received.", order_id);
+                                                let subject = format!("Changed order {} state.", order_id);
                                                 let text = format!(
-                                                    "Customer have successfully paid for order {}. 
-                                                    Please, send the order to customer and change orders' state. 
-                                                    Don't forget to write the correct track id.",
+                                                    "Order {} has changed it's state. You can watch current order state on its page.",
                                                     order_id
                                                 );
                                                 let url = format!("{}/sendmail", notifications_url);
