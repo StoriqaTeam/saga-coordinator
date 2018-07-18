@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use chrono::prelude::*;
 
 use stq_static_resources::OrderState;
-use stq_types::{ConversionId, CurrencyId, InvoiceId, OrderId, ProductPrice, SagaId, StoreId, UserId};
+use stq_types::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct ConvertCart {
@@ -76,13 +76,14 @@ pub struct Order {
     pub id: OrderId,
     pub state: OrderState,
     #[serde(rename = "customer")]
-    pub customer_id: i32,
+    pub customer_id: UserId,
     #[serde(rename = "product")]
-    pub product_id: i32,
-    pub quantity: i32,
+    pub product_id: ProductId,
+    pub quantity: Quantity,
     #[serde(rename = "store")]
-    pub store_id: i32,
-    pub price: f64,
+    pub store_id: StoreId,
+    pub price: ProductPrice,
+    pub currency_id: CurrencyId,
     pub receiver_name: String,
     pub slug: i32,
     pub payment_status: bool,
@@ -92,7 +93,7 @@ pub struct Order {
     pub address: Address,
 }
 
-pub type CartProductWithPriceHash = HashMap<i32, f64>;
+pub type CartProductWithPriceHash = HashMap<ProductId, ProductSellerPrice>;
 
 pub type CreateOrderOperationLog = Vec<CreateOrderOperationStage>;
 
@@ -104,9 +105,9 @@ pub struct BillingOrders {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrdersCartItemInfo {
-    pub quantity: i32,
+    pub quantity: Quantity,
     pub selected: bool,
-    pub store_id: i32,
+    pub store_id: StoreId,
     pub comment: String,
 }
 
