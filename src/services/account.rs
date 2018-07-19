@@ -15,7 +15,7 @@ use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_types::{SagaId, UserId};
+use stq_types::{MerchantId, SagaId, UserId};
 
 use config;
 use errors::Error;
@@ -280,7 +280,7 @@ impl AccountServiceImpl {
                             Err((s, _)) => s,
                         };
                         s.http_client
-                            .request::<Merchant>(
+                            .request::<MerchantId>(
                                 Method::Delete,
                                 format!("{}/merchants/user/{}", s.config.service_url(StqService::Billing), user_id.0,),
                                 None,

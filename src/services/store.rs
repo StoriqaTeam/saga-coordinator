@@ -17,7 +17,7 @@ use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_types::{RoleEntryId, StoreId, StoresRole, UserId};
+use stq_types::{MerchantId, RoleEntryId, StoreId, StoresRole, UserId};
 
 use config;
 use errors::Error;
@@ -468,7 +468,7 @@ impl StoreServiceImpl {
                             Err((s, _)) => s,
                         };
                         s.http_client
-                            .request::<Merchant>(
+                            .request::<MerchantId>(
                                 Method::Delete,
                                 format!("{}/merchants/store/{}", s.config.service_url(StqService::Billing), store_id.0,),
                                 None,
