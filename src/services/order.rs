@@ -104,9 +104,7 @@ impl OrderServiceImpl {
             .push(CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id));
 
         let mut headers = Headers::new();
-        if let Some(ref user_id) = self.user_id {
-            headers.set(Authorization(user_id.to_string()));
-        };
+        headers.set(Authorization("1".to_string())); // only super admin can create invoice
 
         let billing_url = self.config.service_url(StqService::Billing);
         let client = self.http_client.clone();
