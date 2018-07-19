@@ -14,7 +14,7 @@ use serde_json;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_types::{SagaId, UserId};
+use stq_types::SagaId;
 
 use config;
 use errors::Error;
@@ -204,9 +204,9 @@ impl OrderServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can revert invoice
 
                         s.http_client
-                            .request::<UserId>(
+                            .request::<SagaId>(
                                 Method::Delete,
-                                format!("{}/invoices/{}", s.config.service_url(StqService::Billing), saga_id.0.clone(),),
+                                format!("{}/invoices/by-saga-id/{}", s.config.service_url(StqService::Billing), saga_id.0.clone(),),
                                 None,
                                 Some(headers),
                             )
