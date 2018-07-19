@@ -206,7 +206,11 @@ impl OrderServiceImpl {
                         s.http_client
                             .request::<SagaId>(
                                 Method::Delete,
-                                format!("{}/invoices/by-saga-id/{}", s.config.service_url(StqService::Billing), saga_id.0.clone(),),
+                                format!(
+                                    "{}/invoices/by-saga-id/{}",
+                                    s.config.service_url(StqService::Billing),
+                                    saga_id.0.clone(),
+                                ),
                                 None,
                                 Some(headers),
                             )
