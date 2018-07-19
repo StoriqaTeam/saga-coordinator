@@ -177,11 +177,16 @@ pub struct ResetMail {
 pub struct Invoice {
     pub id: SagaId,
     pub invoice_id: InvoiceId,
-    pub transaction_id: Option<String>,
-    pub transaction_captured_amount: ProductPrice,
+    pub transactions: Vec<Transaction>,
     pub amount: ProductPrice,
     pub currency_id: CurrencyId,
     pub price_reserved: SystemTime,
     pub state: OrderState,
     pub wallet: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Transaction {
+    pub id: String,
+    pub amount_captured: ProductPrice,
 }
