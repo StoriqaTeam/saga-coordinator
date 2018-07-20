@@ -274,7 +274,6 @@ impl OrderService for OrderServiceImpl {
                 })
                 .and_then({
                     let client = client.clone();
-                    let order_id = order_info.order_id.0;
                     let customer_id = order_info.customer_id.0;
                     let store_id = order_info.store_id.0;
                     let users_url = users_url.clone();
@@ -292,13 +291,15 @@ impl OrderService for OrderServiceImpl {
                                 .and_then({
                                     let client = client.clone();
                                     let notifications_url = notifications_url.clone();
+                                    let order_slug = order.slug;
+                                    let order_state = order.state.clone();
                                     move |user| {
                                         if let Some(user) = user {
                                             let to = user.email.clone();
-                                            let subject = format!("Changed order {} state.", order_id);
+                                            let subject = format!("Changed order {} state.", order_slug);
                                             let text = format!(
-                                                "Order {} has changed it's state. You can watch current order state on your orders page.",
-                                                order_id
+                                                "Order '{}' new state is '{}'. You can watch current order state on your orders page.",
+                                                order_slug, order_state
                                             );
                                             let url = format!("{}/sendmail", notifications_url);
                                             Box::new(
@@ -332,14 +333,16 @@ impl OrderService for OrderServiceImpl {
                                 .and_then({
                                     let client = client.clone();
                                     let notifications_url = notifications_url.clone();
+                                    let order_slug = order.slug;
+                                    let order_state = order.state.clone();
                                     move |store| {
                                         if let Some(store) = store {
                                             if let Some(email) = store.email {
                                                 let to = email;
-                                                let subject = format!("Changed order {} state.", order_id);
+                                                let subject = format!("Changed order {} state.", order_slug);
                                                 let text = format!(
-                                                    "Order {} has changed it's state. You can watch current order state on its page.",
-                                                    order_id
+                                                    "Order '{}' new state is '{}'. You can watch current order state on its page.",
+                                                    order_slug, order_state
                                                 );
                                                 let url = format!("{}/sendmail", notifications_url);
                                                 Box::new(
