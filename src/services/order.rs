@@ -250,8 +250,7 @@ impl OrderService for OrderServiceImpl {
     }
 
     fn update_state(self, orders_info: BillingOrdersVec) -> Box<Future<Item = String, Error = FailureError>> {
-        // set paid
-        debug!("Set orders paid : {}", orders_info);
+        debug!("Updating orders status: {}", orders_info);
 
         let client = self.http_client.clone();
         let orders_url = self.config.service_url(StqService::Orders);
@@ -269,7 +268,7 @@ impl OrderService for OrderServiceImpl {
             let res = client
                 .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
                 .map_err(|e| {
-                    format_err!("Setting paid in orders microservice error occured.")
+                    format_err!("Setting new status in orders microservice error occured.")
                         .context(Error::HttpClient(e))
                         .into()
                 })
@@ -285,8 +284,10 @@ impl OrderService for OrderServiceImpl {
                     move |order| {
                         if let Some(order) = order {
                             let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), order.customer_id);
+                            let mut headers = Headers::new();
+                            headers.set(Authorization(customer_id.to_string()));
                             let send_to_client = client
-                                .request::<Option<User>>(Method::Get, url, None, None)
+                                .request::<Option<User>>(Method::Get, url, None, Some(headers))
                                 .map_err(From::from)
                                 .and_then({
                                     let client = client.clone();
@@ -386,7 +387,7 @@ impl OrderService for OrderServiceImpl {
         Box::new(
             join_all(orders_futures)
                 .map(|_| "Ok".to_string())
-                .map_err(|e: FailureError| e.context(format!("Setting orders status paid error.")).into()),
+                .map_err(|e: FailureError| e.context(format!("Setting new orders status error.")).into()),
         )
     }
 }
