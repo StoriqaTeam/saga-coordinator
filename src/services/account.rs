@@ -47,7 +47,7 @@ impl AccountServiceImpl {
             provider: input.identity.provider,
             email: input.identity.email,
             password: input.identity.password,
-            saga_id: saga_id_arg.clone(),
+            saga_id: saga_id_arg,
         };
         let new_user = input.user.clone().map(|input_user| NewUser {
             email: input_user.email.clone(),
@@ -58,7 +58,7 @@ impl AccountServiceImpl {
             gender: input_user.gender.clone(),
             birthdate: input_user.birthdate,
             last_login_at: input_user.last_login_at,
-            saga_id: saga_id_arg.clone(),
+            saga_id: saga_id_arg,
         });
         let create_profile = SagaCreateProfile {
             user: new_user,
@@ -68,7 +68,7 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock()
             .unwrap()
-            .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg.clone()));
+            .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg));
 
         let client = self.http_client.clone();
         let users_url = self.config.service_url(StqService::Users);
@@ -88,7 +88,7 @@ impl AccountServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg.clone()));
+                    .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -251,12 +251,7 @@ impl AccountServiceImpl {
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Users),
-                                    "user_by_saga_id",
-                                    saga_id.clone(),
-                                ),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Users), "user_by_saga_id", saga_id,),
                                 None,
                                 None,
                             )
