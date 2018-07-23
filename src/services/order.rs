@@ -14,6 +14,7 @@ use serde_json;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
+use stq_static_resources::{Email, OrderUpdateStateForStore, OrderUpdateStateForUser};
 use stq_types::SagaId;
 
 use config;
@@ -257,6 +258,7 @@ impl OrderService for OrderServiceImpl {
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
         let stores_url = self.config.service_url(StqService::Stores);
+        let cluster_url = self.config.cluster.addr.clone();
 
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
@@ -279,6 +281,7 @@ impl OrderService for OrderServiceImpl {
                     let users_url = users_url.clone();
                     let stores_url = stores_url.clone();
                     let notifications_url = notifications_url.clone();
+                    let cluster_url = cluster_url.clone();
 
                     move |order| {
                         if let Some(order) = order {
@@ -293,17 +296,18 @@ impl OrderService for OrderServiceImpl {
                                     let notifications_url = notifications_url.clone();
                                     let order_slug = order.slug;
                                     let order_state = order.state.clone();
+                                    let cluster_url = cluster_url.clone();
                                     move |user| {
                                         if let Some(user) = user {
-                                            let to = user.email.clone();
-                                            let subject = format!("Changed order {} state.", order_slug);
-                                            let text = format!(
-                                                "Order '{}' new state is '{}'. You can watch current order state on your orders page.",
-                                                order_slug, order_state
-                                            );
+                                            let email = OrderUpdateStateForUser {
+                                                user_email: user.email.clone(),
+                                                order_slug: order_slug.to_string(),
+                                                order_state,
+                                                cluster_url,
+                                            };
                                             let url = format!("{}/sendmail", notifications_url);
                                             Box::new(
-                                                serde_json::to_string(&ResetMail { to, subject, text })
+                                                serde_json::to_string(&email.into_send_mail())
                                                     .map_err(From::from)
                                                     .into_future()
                                                     .and_then(move |body| {
@@ -335,18 +339,20 @@ impl OrderService for OrderServiceImpl {
                                     let notifications_url = notifications_url.clone();
                                     let order_slug = order.slug;
                                     let order_state = order.state.clone();
+                                    let cluster_url = cluster_url.clone();
                                     move |store| {
                                         if let Some(store) = store {
-                                            if let Some(email) = store.email {
-                                                let to = email;
-                                                let subject = format!("Changed order {} state.", order_slug);
-                                                let text = format!(
-                                                    "Order '{}' new state is '{}'. You can watch current order state on its page.",
-                                                    order_slug, order_state
-                                                );
+                                            if let Some(store_email) = store.email {
+                                                let email = OrderUpdateStateForStore {
+                                                    store_email,
+                                                    store_id: store.id.to_string(),
+                                                    order_slug: order_slug.to_string(),
+                                                    order_state,
+                                                    cluster_url,
+                                                };
                                                 let url = format!("{}/sendmail", notifications_url);
                                                 Box::new(
-                                                    serde_json::to_string(&ResetMail { to, subject, text })
+                                                    serde_json::to_string(&email.into_send_mail())
                                                         .map_err(From::from)
                                                         .into_future()
                                                         .and_then(move |body| {

@@ -8,3 +8,6 @@ notifications_addr = "http://notifications:8000"
 
 [graylog]
 addr = "udplog.stq.cloud:32303"
+
+[cluster]
+addr = "http://nightly.stq.cloud"

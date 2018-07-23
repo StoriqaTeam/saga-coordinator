@@ -16,6 +16,12 @@ pub struct Config {
     pub billing_addr: String,
     pub notifications_addr: String,
     pub graylog: Option<GrayLogConfig>,
+    pub cluster: Cluster,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cluster {
+    pub addr: String,
 }
 
 impl Config {

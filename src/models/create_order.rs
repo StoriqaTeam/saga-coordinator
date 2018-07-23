@@ -157,20 +157,17 @@ pub struct UpdateStatePayload {
 
 impl From<BillingOrderInfo> for UpdateStatePayload {
     fn from(order_info: BillingOrderInfo) -> Self {
-        let comment = Some(format!("State changed to {} by billing service.", order_info.status).to_string());
+        let comment = if order_info.status == OrderState::TransactionPending {
+            Some(format!("Found new transaction in blockchain, waiting for it confirmation.").to_string())
+        } else {
+            Some(format!("State changed to {} by billing service.", order_info.status).to_string())
+        };
         Self {
             state: order_info.status,
             track_id: None,
             comment,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ResetMail {
-    pub to: String,
-    pub subject: String,
-    pub text: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
