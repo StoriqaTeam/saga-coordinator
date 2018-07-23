@@ -17,6 +17,7 @@ extern crate uuid;
 extern crate validator;
 
 extern crate stq_http;
+extern crate stq_logging;
 extern crate stq_router;
 extern crate stq_routes;
 extern crate stq_static_resources;
@@ -28,20 +29,15 @@ mod errors;
 mod models;
 mod services;
 
-use std::env;
-use std::io::Write;
 use std::process;
 use std::sync::Arc;
 
 use stq_http::client::Client as HttpClient;
 use stq_http::controller::Application;
 
-use chrono::prelude::*;
-use env_logger::Builder as LogBuilder;
 use futures::future;
 use futures::prelude::*;
 use hyper::server::Http;
-use log::LevelFilter as LogLevelFilter;
 use tokio_core::reactor::Core;
 
 use controller::ControllerImpl;
@@ -49,21 +45,6 @@ use errors::Error;
 
 /// Starts new web service from provided `Config`
 pub fn start_server(config: config::Config) {
-    let mut builder = LogBuilder::new();
-    builder
-        .format(|formatter, record| {
-            let now = Utc::now();
-            writeln!(formatter, "{} - {:5} - {}", now.to_rfc3339(), record.level(), record.args())
-        })
-        .filter(None, LogLevelFilter::Info);
-
-    if env::var("RUST_LOG").is_ok() {
-        builder.parse(&env::var("RUST_LOG").unwrap());
-    }
-
-    // Prepare logger
-    builder.init();
-
     let address = config.listen;
 
     // Prepare reactor

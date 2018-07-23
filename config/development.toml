@@ -5,3 +5,6 @@ warehouses_addr = "http://warehouses:8000"
 orders_addr = "http://orders:8000"
 billing_addr = "http://billing:8000"
 notifications_addr = "http://notifications:8000"
+
+[graylog]
+addr = "udplog.stq.cloud:32303"

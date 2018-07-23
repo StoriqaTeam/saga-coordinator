@@ -1,33 +1,10 @@
 use std::env;
 use std::net::SocketAddr;
 
-use stq_routes::service::Service as StqService;
-
 use config_crate::{Config as RawConfig, ConfigError, Environment, File};
 
-enum Env {
-    Development,
-    Test,
-    Production,
-}
-
-impl Env {
-    fn new() -> Self {
-        match env::var("RUN_MODE") {
-            Ok(ref s) if s == "test" => Env::Test,
-            Ok(ref s) if s == "production" => Env::Production,
-            _ => Env::Development,
-        }
-    }
-
-    fn to_string(&self) -> &'static str {
-        match *self {
-            Env::Development => "development",
-            Env::Production => "production",
-            Env::Test => "test",
-        }
-    }
-}
+use stq_logging::GrayLogConfig;
+use stq_routes::service::Service as StqService;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -38,22 +15,24 @@ pub struct Config {
     pub orders_addr: String,
     pub billing_addr: String,
     pub notifications_addr: String,
+    pub graylog: Option<GrayLogConfig>,
 }
 
 impl Config {
     /// Creates config from base.toml, which are overwritten by <env>.toml, where
     /// env is one of development, test, production. After that it could be overwritten
-    /// by environment variables like STQ_SEC_LISTEN (this will override `listen` field in config)
+    /// by environment variables like STQ_SAGA_LISTEN (this will override `listen` field in config)
     pub fn new() -> Result<Self, ConfigError> {
-        let env = Env::new();
         let mut s = RawConfig::new();
 
         s.merge(File::with_name("config/base"))?;
+
         // Optional file specific for environment
+        let env = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
         s.merge(File::with_name(&format!("config/{}", env.to_string())).required(false))?;
 
-        // Add in settings from the environment (with a prefix of STQ_SEC)
-        s.merge(Environment::with_prefix("STQ_SEC"))?;
+        // Add in settings from the environment (with a prefix of STQ_SAGA)
+        s.merge(Environment::with_prefix("STQ_SAGA"))?;
 
         s.try_into()
     }
