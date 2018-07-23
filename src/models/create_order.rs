@@ -158,7 +158,7 @@ pub struct UpdateStatePayload {
 impl From<BillingOrderInfo> for UpdateStatePayload {
     fn from(order_info: BillingOrderInfo) -> Self {
         let comment = if order_info.status == OrderState::TransactionPending {
-            Some(format!("Found new transaction in blockchain, waiting for it confirmation.").to_string())
+            Some("Found new transaction in blockchain, waiting for it confirmation.".to_string())
         } else {
             Some(format!("State changed to {} by billing service.", order_info.status).to_string())
         };

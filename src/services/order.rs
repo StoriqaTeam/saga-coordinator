@@ -94,7 +94,7 @@ impl OrderServiceImpl {
         Box::new(res)
     }
 
-    fn create_invoice(self, input: CreateInvoice) -> ServiceFuture<Self, Invoice> {
+    fn create_invoice(self, input: &CreateInvoice) -> ServiceFuture<Self, Invoice> {
         // Create invoice
         debug!("Creating invoice, input: {}", input);
         let log = self.log.clone();
@@ -144,7 +144,7 @@ impl OrderServiceImpl {
                 currency_id: input.currency_id,
                 saga_id: SagaId::new(),
             };
-            s.create_invoice(create_invoice)
+            s.create_invoice(&create_invoice)
         }))
     }
 
@@ -153,7 +153,7 @@ impl OrderServiceImpl {
         let log = self.log.lock().unwrap().clone();
 
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log.into_iter() {
+        for e in log {
             match e {
                 CreateOrderOperationStage::OrdersConvertCartStart(conversion_id) => {
                     debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
@@ -205,11 +205,7 @@ impl OrderServiceImpl {
                         s.http_client
                             .request::<SagaId>(
                                 Method::Delete,
-                                format!(
-                                    "{}/invoices/by-saga-id/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    saga_id.0.clone(),
-                                ),
+                                format!("{}/invoices/by-saga-id/{}", s.config.service_url(StqService::Billing), saga_id.0,),
                                 None,
                                 Some(headers),
                             )
@@ -244,7 +240,7 @@ impl OrderService for OrderServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((Box::new(s) as Box<OrderService>, e.into()))
+                        futures::future::err((Box::new(s) as Box<OrderService>, e))
                     })
                 }),
         )
@@ -396,7 +392,7 @@ impl OrderService for OrderServiceImpl {
         Box::new(
             join_all(orders_futures)
                 .map(|_| "Ok".to_string())
-                .map_err(|e: FailureError| e.context(format!("Setting new orders status error.")).into()),
+                .map_err(|e: FailureError| e.context("Setting new orders status error.".to_string()).into()),
         )
     }
 }

@@ -103,14 +103,14 @@ impl StoreServiceImpl {
             data: store_id,
         };
         let role = Role {
-            id: new_role_id.clone(),
-            user_id: user_id,
+            id: new_role_id,
+            user_id,
             role: role_payload.clone(),
         };
 
         log.lock()
             .unwrap()
-            .push(CreateStoreOperationStage::WarehousesRoleSetStart(new_role_id.clone()));
+            .push(CreateStoreOperationStage::WarehousesRoleSetStart(new_role_id));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
@@ -138,7 +138,7 @@ impl StoreServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id.clone()));
+                    .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -159,14 +159,12 @@ impl StoreServiceImpl {
             data: store_id,
         };
         let role = Role {
-            id: new_role_id.clone(),
-            user_id: user_id,
+            id: new_role_id,
+            user_id,
             role: role_payload.clone(),
         };
 
-        log.lock()
-            .unwrap()
-            .push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id.clone()));
+        log.lock().unwrap().push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to orders
@@ -194,7 +192,7 @@ impl StoreServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id.clone()));
+                    .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -211,15 +209,15 @@ impl StoreServiceImpl {
 
         let new_role_id = RoleEntryId::new();
         let role = BillingRole {
-            id: new_role_id.clone(),
-            user_id: user_id,
+            id: new_role_id,
+            user_id,
             name: StoresRole::StoreManager,
             data: store_id,
         };
 
         log.lock()
             .unwrap()
-            .push(CreateStoreOperationStage::BillingRoleSetStart(new_role_id.clone()));
+            .push(CreateStoreOperationStage::BillingRoleSetStart(new_role_id));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to billing
@@ -247,7 +245,7 @@ impl StoreServiceImpl {
             .inspect(move |_| {
                 log.lock()
                     .unwrap()
-                    .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id.clone()));
+                    .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -298,7 +296,7 @@ impl StoreServiceImpl {
     }
 
     // Contains happy path for Store creation
-    fn create_happy(self, input: NewStore) -> ServiceFuture<Self, Store> {
+    fn create_happy(self, input: &NewStore) -> ServiceFuture<Self, Store> {
         Box::new(
             self.create_store(&input)
                 .and_then(|(s, store)| {
@@ -325,7 +323,7 @@ impl StoreServiceImpl {
         let log = self.log.lock().unwrap().clone();
 
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log.into_iter() {
+        for e in log {
             match e {
                 CreateStoreOperationStage::StoreCreationStart(user_id) => {
                     debug!("Reverting store, user_id: {}", user_id);
@@ -376,12 +374,7 @@ impl StoreServiceImpl {
                         s.http_client
                             .request::<Role>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Warehouses),
-                                    "roles/by-id",
-                                    role_id.clone(),
-                                ),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Warehouses), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
                             )
@@ -410,7 +403,7 @@ impl StoreServiceImpl {
                         s.http_client
                             .request::<Role>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Orders), "roles/by-id", role_id.clone(),),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Orders), "roles/by-id", role_id),
                                 None,
                                 Some(headers),
                             )
@@ -439,12 +432,7 @@ impl StoreServiceImpl {
                         s.http_client
                             .request::<Role>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    "roles/by-id",
-                                    role_id.clone(),
-                                ),
+                                format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
                             )
@@ -497,7 +485,7 @@ impl StoreServiceImpl {
 impl StoreService for StoreServiceImpl {
     fn create(self, input: NewStore) -> ServiceFuture<Box<StoreService>, Option<Store>> {
         Box::new(
-            self.create_happy(input.clone())
+            self.create_happy(&input)
                 .map(|(s, store)| (Box::new(s) as Box<StoreService>, Some(store)))
                 .or_else(move |(s, e)| {
                     s.create_revert().then(move |res| {
@@ -505,7 +493,7 @@ impl StoreService for StoreServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((Box::new(s) as Box<StoreService>, e.into()))
+                        futures::future::err((Box::new(s) as Box<StoreService>, e))
                     })
                 })
                 .map_err(|(s, e): (Box<StoreService>, FailureError)| {
