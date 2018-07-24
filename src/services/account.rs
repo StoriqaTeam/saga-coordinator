@@ -15,7 +15,7 @@ use stq_http::client::Error as HttpError;
 use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_types::{MerchantId, SagaId, UserId};
+use stq_types::{MerchantId, RoleEntryId, SagaId, StoresRole, UserId};
 
 use config;
 use errors::Error;
@@ -156,6 +156,59 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
+    fn create_billing_role(self, user_id: UserId) -> ServiceFuture<Self, BillingRole> {
+        // Create billing role
+        debug!("Creating billing role, user id: {}", user_id);
+        let log = self.log.clone();
+
+        let new_role_id = RoleEntryId::new();
+        let role = BillingRole {
+            id: new_role_id,
+            user_id,
+            name: StoresRole::User,
+            data: None,
+        };
+
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::BillingRoleSetStart(new_role_id));
+
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can add role to billing
+
+        let client = self.http_client.clone();
+        let billing_url = self.config.service_url(StqService::Billing);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<BillingRole>(
+                        Method::Post,
+                        format!("{}/{}", billing_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    )
+                    .map_err(|e| {
+                        format_err!("Creating role in billing microservice failed.")
+                            .context(Error::HttpClient(e))
+                            .into()
+                    })
+            })
+            .inspect(move |_| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::BillingRoleSetComplete(new_role_id));
+            })
+            .then(|res| match res {
+                Ok(billing_role) => Ok((self, billing_role)),
+                Err(e) => Err((self, e)),
+            });
+
+        Box::new(res)
+    }
+
     fn create_merchant(self, user_id: UserId) -> ServiceFuture<Self, Merchant> {
         debug!("Creating merchant for user_id: {} in billing microservice", user_id);
         let payload = CreateUserMerchantPayload { id: user_id };
@@ -190,7 +243,7 @@ impl AccountServiceImpl {
                     .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
 
@@ -205,6 +258,7 @@ impl AccountServiceImpl {
             self.create_user(input, saga_id)
                 .and_then(|(s, user)| s.create_user_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)))
+                .and_then(|(s, user)| s.create_billing_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_merchant(user.id).map(|(s, _)| (s, user))),
         )
     }
@@ -260,6 +314,35 @@ impl AccountServiceImpl {
                                 Err(e) => Err((
                                     s,
                                     format_err!("Account service create_revert AccountCreationStart error occured.")
+                                        .context(Error::HttpClient(e))
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
+                CreateProfileOperationStage::BillingRoleSetStart(role_id) => {
+                    debug!("Reverting billing role, user_id: {}", role_id);
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+                        let mut headers = Headers::new();
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
+
+                        s.http_client
+                            .request::<Role>(
+                                Method::Delete,
+                                format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
+                                None,
+                                Some(headers),
+                            )
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    format_err!("Store service create_revert BillingRoleSetStart error occured.")
                                         .context(Error::HttpClient(e))
                                         .into(),
                                 )),

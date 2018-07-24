@@ -85,7 +85,7 @@ impl StoreServiceImpl {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(user_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(store) => Ok((self, store)),
                 Err(e) => Err((self, e)),
             });
 
@@ -141,7 +141,7 @@ impl StoreServiceImpl {
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(warehouse_role) => Ok((self, warehouse_role)),
                 Err(e) => Err((self, e)),
             });
 
@@ -195,7 +195,7 @@ impl StoreServiceImpl {
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(orders_role) => Ok((self, orders_role)),
                 Err(e) => Err((self, e)),
             });
 
@@ -212,7 +212,7 @@ impl StoreServiceImpl {
             id: new_role_id,
             user_id,
             name: StoresRole::StoreManager,
-            data: store_id,
+            data: Some(store_id),
         };
 
         log.lock()
@@ -223,7 +223,7 @@ impl StoreServiceImpl {
         headers.set(Authorization("1".to_string())); // only super admin can add role to billing
 
         let client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Billing);
+        let billing_url = self.config.service_url(StqService::Billing);
 
         let res = serde_json::to_string(&role)
             .into_future()
@@ -232,7 +232,7 @@ impl StoreServiceImpl {
                 client
                     .request::<BillingRole>(
                         Method::Post,
-                        format!("{}/{}", orders_url, StqModel::Role.to_url()),
+                        format!("{}/{}", billing_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
                     )
@@ -248,7 +248,7 @@ impl StoreServiceImpl {
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(billing_role) => Ok((self, billing_role)),
                 Err(e) => Err((self, e)),
             });
 
@@ -288,7 +288,7 @@ impl StoreServiceImpl {
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
             })
             .then(|res| match res {
-                Ok(store) => Ok((self, store)),
+                Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
 
