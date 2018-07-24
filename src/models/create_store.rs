@@ -90,7 +90,7 @@ pub struct BillingRole {
     pub id: RoleEntryId,
     pub user_id: UserId,
     pub name: StoresRole,
-    pub data: StoreId,
+    pub data: Option<StoreId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

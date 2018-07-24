@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use chrono::NaiveDate;
 
-use stq_types::{MerchantId, SagaId, UserId, UsersRole};
+use stq_types::{MerchantId, RoleEntryId, SagaId, UserId, UsersRole};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -130,6 +130,8 @@ pub enum CreateProfileOperationStage {
     UsersRoleSetComplete(UserId),
     StoreRoleSetStart(UserId),
     StoreRoleSetComplete(UserId),
+    BillingRoleSetStart(RoleEntryId),
+    BillingRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(UserId),
     BillingCreateMerchantComplete(UserId),
 }
