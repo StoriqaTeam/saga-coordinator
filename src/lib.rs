@@ -45,7 +45,10 @@ use errors::Error;
 
 /// Starts new web service from provided `Config`
 pub fn start_server(config: config::Config) {
-    let address = config.listen;
+    // Prepare server
+    let address = format!("{}:{}", config.server.host, config.server.port)
+        .parse()
+        .expect("Could not parse address");
 
     // Prepare reactor
     let mut core = Core::new().expect("Unexpected error creating event loop core");

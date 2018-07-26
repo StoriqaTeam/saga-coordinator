@@ -1,5 +1,4 @@
 use std::env;
-use std::net::SocketAddr;
 
 use config_crate::{Config as RawConfig, ConfigError, Environment, File};
 
@@ -8,20 +7,32 @@ use stq_routes::service::Service as StqService;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub listen: SocketAddr,
-    pub users_addr: String,
-    pub stores_addr: String,
-    pub warehouses_addr: String,
-    pub orders_addr: String,
-    pub billing_addr: String,
-    pub notifications_addr: String,
+    pub server: Server,
+    pub users_microservice: Microservice,
+    pub stores_microservice: Microservice,
+    pub orders_microservice: Microservice,
+    pub billing_microservice: Microservice,
+    pub warehouses_microservice: Microservice,
+    pub notifications_microservice: Microservice,
     pub graylog: Option<GrayLogConfig>,
     pub cluster: Cluster,
 }
 
+/// Common server settings
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Server {
+    pub host: String,
+    pub port: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Microservice {
+    pub url: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cluster {
-    pub addr: String,
+    pub url: String,
 }
 
 impl Config {
@@ -45,12 +56,12 @@ impl Config {
 
     pub fn service_url(&self, service: StqService) -> String {
         match service {
-            StqService::Users => self.users_addr.clone(),
-            StqService::Stores => self.stores_addr.clone(),
-            StqService::Warehouses => self.warehouses_addr.clone(),
-            StqService::Orders => self.orders_addr.clone(),
-            StqService::Billing => self.billing_addr.clone(),
-            StqService::Notifications => self.notifications_addr.clone(),
+            StqService::Users => self.users_microservice.url.clone(),
+            StqService::Stores => self.stores_microservice.url.clone(),
+            StqService::Warehouses => self.warehouses_microservice.url.clone(),
+            StqService::Orders => self.orders_microservice.url.clone(),
+            StqService::Billing => self.billing_microservice.url.clone(),
+            StqService::Notifications => self.notifications_microservice.url.clone(),
         }
     }
 }

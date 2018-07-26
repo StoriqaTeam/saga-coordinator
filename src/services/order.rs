@@ -254,7 +254,7 @@ impl OrderService for OrderServiceImpl {
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
         let stores_url = self.config.service_url(StqService::Stores);
-        let cluster_url = self.config.cluster.addr.clone();
+        let cluster_url = self.config.cluster.url.clone();
 
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
