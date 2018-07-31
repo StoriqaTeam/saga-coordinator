@@ -120,6 +120,22 @@ pub struct Merchant {
     pub merchant_id: MerchantId,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResetRequest {
+    pub email: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmailVerifyApply {
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PasswordResetApply {
+    pub token: String,
+    pub password: String,
+}
+
 pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

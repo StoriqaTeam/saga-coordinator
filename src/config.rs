@@ -16,6 +16,7 @@ pub struct Config {
     pub notifications_microservice: Microservice,
     pub graylog: Option<GrayLogConfig>,
     pub cluster: Cluster,
+    pub notification_urls: NotificationUrls,
 }
 
 /// Common server settings
@@ -33,6 +34,12 @@ pub struct Microservice {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cluster {
     pub url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NotificationUrls {
+    pub verify_email_path: String,
+    pub reset_password_path: String,
 }
 
 impl Config {
