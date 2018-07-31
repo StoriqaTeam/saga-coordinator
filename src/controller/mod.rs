@@ -25,7 +25,7 @@ use stq_router::RouteParser;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use models::{BillingOrdersVec, ConvertCart, NewStore, SagaCreateProfile};
+use models::{BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile};
 use services::account::{AccountService, AccountServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
 use services::store::{StoreService, StoreServiceImpl};
@@ -61,6 +61,66 @@ impl Controller for ControllerImpl {
                     .and_then(move |profile| {
                         account_service
                             .create(profile)
+                            .map(|(_, user)| user)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                    }),
+            ),
+            (&Method::Post, Some(Route::VerifyEmail)) => serialize_future(
+                parse_body::<ResetRequest>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body // POST /email_verify in ResetRequest failed!")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |profile| {
+                        account_service
+                            .request_email_verification(profile)
+                            .map(|(_, user)| user)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                    }),
+            ),
+            (&Method::Post, Some(Route::VerifyEmailApply)) => serialize_future(
+                parse_body::<EmailVerifyApply>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body // POST /email_verify_apply in EmailVerifyApply failed!")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |profile| {
+                        account_service
+                            .request_email_verification_apply(profile)
+                            .map(|(_, user)| user)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                    }),
+            ),
+            (&Method::Post, Some(Route::ResetPassword)) => serialize_future(
+                parse_body::<ResetRequest>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body // POST /reset_password in ResetRequest failed!")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |profile| {
+                        account_service
+                            .request_password_reset(profile)
+                            .map(|(_, user)| user)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                    }),
+            ),
+            (&Method::Post, Some(Route::ResetPasswordApply)) => serialize_future(
+                parse_body::<PasswordResetApply>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body // POST /reset_password_apply in PasswordResetApply failed!")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |profile| {
+                        account_service
+                            .request_password_reset_apply(profile)
                             .map(|(_, user)| user)
                             .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
                     }),
