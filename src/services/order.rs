@@ -14,7 +14,7 @@ use serde_json;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_static_resources::{Email, OrderUpdateStateForStore, OrderUpdateStateForUser};
+use stq_static_resources::{EmailUser, OrderUpdateStateForStore, OrderUpdateStateForUser};
 use stq_types::SagaId;
 
 use config;
@@ -94,7 +94,7 @@ impl OrderServiceImpl {
         Box::new(res)
     }
 
-    fn create_invoice(self, input: CreateInvoice) -> ServiceFuture<Self, Invoice> {
+    fn create_invoice(self, input: &CreateInvoice) -> ServiceFuture<Self, Invoice> {
         // Create invoice
         debug!("Creating invoice, input: {}", input);
         let log = self.log.clone();
@@ -144,7 +144,7 @@ impl OrderServiceImpl {
                 currency_id: input.currency_id,
                 saga_id: SagaId::new(),
             };
-            s.create_invoice(create_invoice)
+            s.create_invoice(&create_invoice)
         }))
     }
 
@@ -153,7 +153,7 @@ impl OrderServiceImpl {
         let log = self.log.lock().unwrap().clone();
 
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log.into_iter() {
+        for e in log {
             match e {
                 CreateOrderOperationStage::OrdersConvertCartStart(conversion_id) => {
                     debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
@@ -205,11 +205,7 @@ impl OrderServiceImpl {
                         s.http_client
                             .request::<SagaId>(
                                 Method::Delete,
-                                format!(
-                                    "{}/invoices/by-saga-id/{}",
-                                    s.config.service_url(StqService::Billing),
-                                    saga_id.0.clone(),
-                                ),
+                                format!("{}/invoices/by-saga-id/{}", s.config.service_url(StqService::Billing), saga_id.0,),
                                 None,
                                 Some(headers),
                             )
@@ -244,7 +240,7 @@ impl OrderService for OrderServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
-                        futures::future::err((Box::new(s) as Box<OrderService>, e.into()))
+                        futures::future::err((Box::new(s) as Box<OrderService>, e))
                     })
                 }),
         )
@@ -258,7 +254,7 @@ impl OrderService for OrderServiceImpl {
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
         let stores_url = self.config.service_url(StqService::Stores);
-        let cluster_url = self.config.cluster.addr.clone();
+        let cluster_url = self.config.cluster.url.clone();
 
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
@@ -299,22 +295,21 @@ impl OrderService for OrderServiceImpl {
                                     let cluster_url = cluster_url.clone();
                                     move |user| {
                                         if let Some(user) = user {
+                                            let user = EmailUser {
+                                                email: user.email.clone(),
+                                                first_name: user.first_name.unwrap_or("user".to_string()),
+                                                last_name: user.last_name.unwrap_or("".to_string()),
+                                            };
                                             let email = OrderUpdateStateForUser {
-                                                user_email: user.email.clone(),
+                                                user,
                                                 order_slug: order_slug.to_string(),
                                                 order_state,
                                                 cluster_url,
                                             };
-                                            let url = format!("{}/sendmail", notifications_url);
-                                            Box::new(
-                                                serde_json::to_string(&email.into_send_mail())
-                                                    .map_err(From::from)
-                                                    .into_future()
-                                                    .and_then(move |body| {
-                                                        client.request::<String>(Method::Post, url, Some(body), None).map_err(From::from)
-                                                    }),
-                                            )
-                                                as Box<Future<Item = String, Error = FailureError>>
+                                            let url = format!("{}/users/order-update-state", notifications_url);
+                                            Box::new(serde_json::to_string(&email).map_err(From::from).into_future().and_then(
+                                                move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from),
+                                            )) as Box<Future<Item = (), Error = FailureError>>
                                         } else {
                                             error!(
                                                 "Sending notification to user can not be done. User with id: {} is not found.",
@@ -327,8 +322,7 @@ impl OrderService for OrderServiceImpl {
                                             ))
                                         }
                                     }
-                                })
-                                .map(|_| ());
+                                });
 
                             let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), order.store_id);
                             let send_to_store = client
@@ -350,20 +344,15 @@ impl OrderService for OrderServiceImpl {
                                                     order_state,
                                                     cluster_url,
                                                 };
-                                                let url = format!("{}/sendmail", notifications_url);
-                                                Box::new(
-                                                    serde_json::to_string(&email.into_send_mail())
-                                                        .map_err(From::from)
-                                                        .into_future()
-                                                        .and_then(move |body| {
-                                                            client
-                                                                .request::<String>(Method::Post, url, Some(body), None)
-                                                                .map_err(From::from)
-                                                        }),
-                                                )
-                                                    as Box<Future<Item = String, Error = FailureError>>
+                                                let url = format!("{}/stores/order-update-state", notifications_url);
+                                                Box::new(serde_json::to_string(&email).map_err(From::from).into_future().and_then(
+                                                    move |body| {
+                                                        client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)
+                                                    },
+                                                ))
+                                                    as Box<Future<Item = (), Error = FailureError>>
                                             } else {
-                                                Box::new(future::ok(String::default()))
+                                                Box::new(future::ok(()))
                                             }
                                         } else {
                                             error!(
@@ -377,8 +366,7 @@ impl OrderService for OrderServiceImpl {
                                             ))
                                         }
                                     }
-                                })
-                                .map(|_| ());
+                                });
                             Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())))
                                 as Box<Future<Item = (), Error = FailureError>>
                         } else {
@@ -396,7 +384,7 @@ impl OrderService for OrderServiceImpl {
         Box::new(
             join_all(orders_futures)
                 .map(|_| "Ok".to_string())
-                .map_err(|e: FailureError| e.context(format!("Setting new orders status error.")).into()),
+                .map_err(|e: FailureError| e.context("Setting new orders status error.".to_string()).into()),
         )
     }
 }

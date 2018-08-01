@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use chrono::NaiveDate;
 
-use stq_types::{MerchantId, SagaId, UserId, UsersRole};
+use stq_types::{MerchantId, RoleEntryId, SagaId, UserId, UsersRole};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Gender {
@@ -120,6 +120,22 @@ pub struct Merchant {
     pub merchant_id: MerchantId,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResetRequest {
+    pub email: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmailVerifyApply {
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PasswordResetApply {
+    pub token: String,
+    pub password: String,
+}
+
 pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -130,6 +146,8 @@ pub enum CreateProfileOperationStage {
     UsersRoleSetComplete(UserId),
     StoreRoleSetStart(UserId),
     StoreRoleSetComplete(UserId),
+    BillingRoleSetStart(RoleEntryId),
+    BillingRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(UserId),
     BillingCreateMerchantComplete(UserId),
 }
