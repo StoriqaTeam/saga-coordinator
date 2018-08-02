@@ -24,7 +24,7 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Invoice>;
-    fn update_state(self, orders: BillingOrdersVec) -> Box<Future<Item = String, Error = FailureError>>;
+    fn update_state(self, orders: BillingOrdersVec) -> Box<Future<Item = (), Error = FailureError>>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -364,7 +364,7 @@ impl OrderService for OrderServiceImpl {
         )
     }
 
-    fn update_state(self, orders_info: BillingOrdersVec) -> Box<Future<Item = String, Error = FailureError>> {
+    fn update_state(self, orders_info: BillingOrdersVec) -> Box<Future<Item = (), Error = FailureError>> {
         debug!("Updating orders status: {}", orders_info);
 
         let client = self.http_client.clone();
@@ -501,7 +501,7 @@ impl OrderService for OrderServiceImpl {
 
         Box::new(
             join_all(orders_futures)
-                .map(|_| "Ok".to_string())
+                .map(|_| ())
                 .map_err(|e: FailureError| e.context("Setting new orders status error.".to_string()).into()),
         )
     }
