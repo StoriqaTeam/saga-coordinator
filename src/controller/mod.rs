@@ -62,7 +62,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .create(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation occured.")))
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmail)) => serialize_future(
@@ -77,7 +77,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_email_verification(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification occured.")))
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmailApply)) => serialize_future(
@@ -92,7 +92,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_email_verification_apply(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification apply occured.")))
                     }),
             ),
             (&Method::Post, Some(Route::ResetPassword)) => serialize_future(
@@ -107,7 +107,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_password_reset(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password occured.")))
                     }),
             ),
             (&Method::Post, Some(Route::ResetPasswordApply)) => serialize_future(
@@ -122,7 +122,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_password_reset_apply(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password apply occured.")))
                     }),
             ),
 
@@ -138,7 +138,7 @@ impl Controller for ControllerImpl {
                         store_service
                             .create(store)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during store creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during store creation occured.")))
                     }),
             ),
 
@@ -154,7 +154,7 @@ impl Controller for ControllerImpl {
                         order_service
                             .create(new_order)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation in saga occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation occured.")))
                     }),
             ),
 
@@ -162,14 +162,14 @@ impl Controller for ControllerImpl {
                 parse_body::<BillingOrdersVec>(req.body())
                     .map_err(|e| {
                         FailureError::from(
-                            e.context("Parsing body // POST /create_order in ConvertCart failed!")
+                            e.context("Parsing body // POST /orders/update_state in BillingOrdersVec failed!")
                                 .context(Error::Parse),
                         )
                     })
                     .and_then(move |orders_info| {
                         order_service
                             .update_state(orders_info)
-                            .map_err(|e| FailureError::from(e.context("Error during order creation in saga occured.")))
+                            .map_err(|e| FailureError::from(e.context("Error during orders update by external billing occured.")))
                     }),
             ),
 

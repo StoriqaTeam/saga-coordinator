@@ -157,11 +157,13 @@ pub struct UpdateStatePayload {
 
 impl From<BillingOrderInfo> for UpdateStatePayload {
     fn from(order_info: BillingOrderInfo) -> Self {
-        let comment = if order_info.status == OrderState::TransactionPending {
-            Some("Found new transaction in blockchain, waiting for it confirmation.".to_string())
-        } else {
-            Some(format!("State changed to {} by billing service.", order_info.status).to_string())
-        };
+        let comment = Some(match order_info.status {
+            OrderState::TransactionPending => "Found new transaction in blockchain, waiting for it confirmation.".to_string(),
+            OrderState::AmountExpired => {
+                "Invoice amount expiration timeout occured, total amount will be recalculated by billing service.".to_string()
+            }
+            _ => format!("State changed to {} by billing service.", order_info.status).to_string(),
+        });
         Self {
             state: order_info.status,
             track_id: None,
