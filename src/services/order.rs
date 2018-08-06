@@ -18,6 +18,7 @@ use stq_static_resources::{EmailUser, OrderCreateForStore, OrderCreateForUser, O
                            OrderUpdateStateForUser};
 use stq_types::{SagaId, StoreId, UserId};
 
+use super::parse_validation_errors;
 use config;
 use errors::Error;
 use models::*;
@@ -571,7 +572,8 @@ impl OrderService for OrderServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<OrderService>, e))
                     })
-                }),
+                })
+                .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
         )
     }
 
