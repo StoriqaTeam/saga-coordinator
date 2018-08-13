@@ -148,7 +148,7 @@ pipeline:
 ###
 
   deploy2production:
-    image: jackthestripper/drone_k8s_rollout:20180510
+    image: jackthestripper/drone_k8s_rollout:20180610
     namespace: default
     kind: deployment
     object: saga
