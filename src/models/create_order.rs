@@ -13,6 +13,7 @@ pub struct ConvertCart {
     #[serde(flatten)]
     pub address: Address,
     pub receiver_name: String,
+    pub receiver_phone: String,
     pub prices: CartProductWithPriceHash,
     pub currency_id: CurrencyId,
 }

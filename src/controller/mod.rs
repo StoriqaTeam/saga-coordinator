@@ -169,7 +169,8 @@ impl Controller for ControllerImpl {
                     .and_then(move |orders_info| {
                         order_service
                             .update_state(orders_info)
-                            .map_err(|e| FailureError::from(e.context("Error during orders update by external billing occured.")))
+                            .map(|(_, _)| ())
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders update by external billing occured.")))
                     }),
             ),
 

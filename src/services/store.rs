@@ -1,24 +1,20 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use failure::{Context, Error as FailureError, Fail};
+use failure::Error as FailureError;
 use futures;
 use futures::prelude::*;
 use hyper::header::Authorization;
 use hyper::Headers;
 use hyper::Method;
-use hyper::StatusCode;
 
 use serde_json;
-use validator::{ValidationError, ValidationErrors};
 
 use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::client::Error as HttpError;
-use stq_http::errors::ErrorMessage;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_types::{MerchantId, RoleEntryId, StoreId, StoresRole, UserId};
 
+use super::parse_validation_errors;
 use config;
 use errors::Error;
 use models::create_store::Role;
@@ -497,97 +493,22 @@ impl StoreService for StoreServiceImpl {
                     })
                 })
                 .map_err(|(s, e): (Box<StoreService>, FailureError)| {
-                    {
-                        let real_err = e.causes()
-                            .filter_map(|cause| {
-                                if let Some(ctx) = cause.downcast_ref::<Context<Error>>() {
-                                    Some(ctx.get_context())
-                                } else {
-                                    cause.downcast_ref::<Error>()
-                                }
-                            })
-                            .nth(0);
-                        if let Some(Error::HttpClient(HttpError::Api(
-                            _,
-                            Some(ErrorMessage {
-                                payload,
-                                code,
-                                description,
-                            }),
-                        ))) = real_err
-                        {
-                            match code {
-                                x if x == &StatusCode::Forbidden.as_u16() => {
-                                    return (s, format_err!("{}", description).context(Error::Forbidden).into())
-                                }
-                                x if x == &StatusCode::NotFound.as_u16() => {
-                                    return (s, format_err!("{}", description).context(Error::NotFound).into())
-                                }
-                                x if x == &StatusCode::BadRequest.as_u16() => {
-                                    if let Some(payload) = payload {
-                                        // Wierd construction of ValidationErrors due to the fact ValidationErrors.add
-                                        // only accepts str with static lifetime
-                                        let valid_err_res =
-                                            serde_json::from_value::<HashMap<String, Vec<ValidationError>>>(payload.clone());
-                                        match valid_err_res {
-                                            Ok(valid_err_map) => {
-                                                let mut valid_errors = ValidationErrors::new();
-                                                if let Some(map_val) = valid_err_map.get("name") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("name", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("short_description") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("short_description", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("long_description") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("long_description", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("slug") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("slug", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("phone") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("phone", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("email") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("email", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("default_language") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("default_language", map_val[0].clone())
-                                                    }
-                                                }
-                                                if let Some(map_val) = valid_err_map.get("store") {
-                                                    if !map_val.is_empty() {
-                                                        valid_errors.add("store", map_val[0].clone())
-                                                    }
-                                                }
-
-                                                return (s, Error::Validate(valid_errors).into());
-                                            }
-                                            Err(e) => {
-                                                return (s, e.context("Cannot parse validation errors").context(Error::Unknown).into());
-                                            }
-                                        }
-                                    } else {
-                                        return (s, format_err!("{}", description).context(Error::Unknown).into());
-                                    }
-                                }
-                                _ => return (s, format_err!("{}", description).context(Error::Unknown).into()),
-                            }
-                        }
-                    }
-                    (s, e)
+                    (
+                        s,
+                        parse_validation_errors(
+                            e,
+                            &[
+                                "name",
+                                "short_description",
+                                "long_description",
+                                "slug",
+                                "phone",
+                                "email",
+                                "default_language",
+                                "store",
+                            ],
+                        ),
+                    )
                 }),
         )
     }

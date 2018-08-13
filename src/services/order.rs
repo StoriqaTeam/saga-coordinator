@@ -14,9 +14,11 @@ use serde_json;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_static_resources::{EmailUser, OrderCreateForStore, OrderCreateForUser, OrderUpdateStateForStore, OrderUpdateStateForUser};
-use stq_types::SagaId;
+use stq_static_resources::{EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore,
+                           OrderUpdateStateForUser};
+use stq_types::{SagaId, StoreId, UserId};
 
+use super::parse_validation_errors;
 use config;
 use errors::Error;
 use models::*;
@@ -24,7 +26,7 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Invoice>;
-    fn update_state(self, orders: BillingOrdersVec) -> Box<Future<Item = (), Error = FailureError>>;
+    fn update_state(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -135,40 +137,78 @@ impl OrderServiceImpl {
         Box::new(res)
     }
 
-    fn notify_user(self, orders: &[Order]) -> ServiceFuture<Self, ()> {
-        debug!("Notifiing user in notificatins microservice");
+    fn notify_user_create_order(&self, user_id: UserId, order_slug: i32) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
+        let cluster_url = self.config.cluster.url.clone();
+        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
+        let mut headers = Headers::new();
+        headers.set(Authorization(user_id.to_string()));
+        let send_to_client = client
+            .request::<Option<User>>(Method::Get, url, None, Some(headers))
+            .map_err(From::from)
+            .and_then({
+                let client = client.clone();
+                move |user| {
+                    if let Some(user) = user {
+                        let user = EmailUser {
+                            email: user.email.clone(),
+                            first_name: user.first_name.unwrap_or("user".to_string()),
+                            last_name: user.last_name.unwrap_or("".to_string()),
+                        };
+                        let email = OrderCreateForUser {
+                            user,
+                            order_slug: order_slug.to_string(),
+                            cluster_url,
+                        };
+                        let url = format!("{}/users/order-create", notifications_url);
+                        Box::new(
+                            serde_json::to_string(&email)
+                                .map_err(From::from)
+                                .into_future()
+                                .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                        ) as Box<Future<Item = (), Error = FailureError>>
+                    } else {
+                        error!(
+                            "Sending notification to user can not be done. User with id: {} is not found.",
+                            user_id
+                        );
+                        Box::new(future::err(
+                            format_err!("User is not found in users microservice.")
+                                .context(Error::NotFound)
+                                .into(),
+                        ))
+                    }
+                }
+            });
+
+        Box::new(send_to_client)
+    }
+
+    fn notify_store_create_order(&self, store_id: StoreId, order_slug: i32) -> Box<Future<Item = (), Error = FailureError>> {
+        let client = self.http_client.clone();
+        let notifications_url = self.config.service_url(StqService::Notifications);
         let stores_url = self.config.service_url(StqService::Stores);
         let cluster_url = self.config.cluster.url.clone();
-        let mut orders_futures = vec![];
-        for order in orders {
-            let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), order.customer_id);
-            let mut headers = Headers::new();
-            let customer_id = order.customer_id;
-            headers.set(Authorization(customer_id.to_string()));
-            let send_to_client = client
-                .request::<Option<User>>(Method::Get, url, None, Some(headers))
-                .map_err(From::from)
-                .and_then({
-                    let client = client.clone();
-                    let notifications_url = notifications_url.clone();
-                    let order_slug = order.slug;
-                    let cluster_url = cluster_url.clone();
-                    move |user| {
-                        if let Some(user) = user {
-                            let user = EmailUser {
-                                email: user.email.clone(),
-                                first_name: user.first_name.unwrap_or("user".to_string()),
-                                last_name: user.last_name.unwrap_or("".to_string()),
-                            };
-                            let email = OrderCreateForUser {
-                                user,
+        let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
+        let send_to_store = client
+            .request::<Option<Store>>(Method::Get, url, None, None)
+            .map_err(From::from)
+            .and_then({
+                let client = client.clone();
+                let notifications_url = notifications_url.clone();
+                let cluster_url = cluster_url.clone();
+                move |store| {
+                    if let Some(store) = store {
+                        if let Some(store_email) = store.email {
+                            let email = OrderCreateForStore {
+                                store_email,
+                                store_id: store_id.to_string(),
                                 order_slug: order_slug.to_string(),
                                 cluster_url,
                             };
-                            let url = format!("{}/users/order-create", notifications_url);
+                            let url = format!("{}/stores/order-create", notifications_url);
                             Box::new(
                                 serde_json::to_string(&email)
                                     .map_err(From::from)
@@ -176,70 +216,168 @@ impl OrderServiceImpl {
                                     .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
                             ) as Box<Future<Item = (), Error = FailureError>>
                         } else {
-                            error!(
-                                "Sending notification to user can not be done. User with id: {} is not found.",
-                                customer_id
-                            );
-                            Box::new(future::err(
-                                format_err!("User is not found in users microservice.")
-                                    .context(Error::NotFound)
-                                    .into(),
-                            ))
+                            Box::new(future::ok(()))
                         }
+                    } else {
+                        error!(
+                            "Sending notification to store can not be done. Store with id: {} is not found.",
+                            store_id
+                        );
+                        Box::new(future::err(
+                            format_err!("Store is not found in stores microservice.")
+                                .context(Error::NotFound)
+                                .into(),
+                        ))
                     }
-                });
+                }
+            });
 
-            let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), order.store_id);
-            let send_to_store = client
-                .request::<Option<Store>>(Method::Get, url, None, None)
-                .map_err(From::from)
-                .and_then({
-                    let client = client.clone();
-                    let notifications_url = notifications_url.clone();
-                    let order_slug = order.slug;
-                    let store_id = order.store_id;
-                    let cluster_url = cluster_url.clone();
-                    move |store| {
-                        if let Some(store) = store {
-                            if let Some(store_email) = store.email {
-                                let email = OrderCreateForStore {
-                                    store_email,
-                                    store_id: store.id.to_string(),
-                                    order_slug: order_slug.to_string(),
-                                    cluster_url,
-                                };
-                                let url = format!("{}/stores/order-create", notifications_url);
-                                Box::new(
-                                    serde_json::to_string(&email)
-                                        .map_err(From::from)
-                                        .into_future()
-                                        .and_then(move |body| {
-                                            client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)
-                                        }),
-                                ) as Box<Future<Item = (), Error = FailureError>>
-                            } else {
-                                Box::new(future::ok(()))
-                            }
-                        } else {
-                            error!(
-                                "Sending notification to store can not be done. Store with id: {} is not found.",
-                                store_id
-                            );
-                            Box::new(future::err(
-                                format_err!("Store is not found in stores microservice.")
-                                    .context(Error::NotFound)
-                                    .into(),
-                            ))
-                        }
+        Box::new(send_to_store)
+    }
+
+    fn notify_user_update_order(
+        &self,
+        user_id: UserId,
+        order_slug: i32,
+        order_state: String,
+    ) -> Box<Future<Item = (), Error = FailureError>> {
+        let client = self.http_client.clone();
+        let notifications_url = self.config.service_url(StqService::Notifications);
+        let users_url = self.config.service_url(StqService::Users);
+        let cluster_url = self.config.cluster.url.clone();
+        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
+        let mut headers = Headers::new();
+        headers.set(Authorization(user_id.to_string()));
+        let send_to_client = client
+            .request::<Option<User>>(Method::Get, url, None, Some(headers))
+            .map_err(From::from)
+            .and_then({
+                let client = client.clone();
+                move |user| {
+                    if let Some(user) = user {
+                        let user = EmailUser {
+                            email: user.email.clone(),
+                            first_name: user.first_name.unwrap_or("user".to_string()),
+                            last_name: user.last_name.unwrap_or("".to_string()),
+                        };
+                        let email = OrderUpdateStateForUser {
+                            user,
+                            order_slug: order_slug.to_string(),
+                            order_state,
+                            cluster_url,
+                        };
+                        let url = format!("{}/users/order-update-state", notifications_url);
+                        Box::new(
+                            serde_json::to_string(&email)
+                                .map_err(From::from)
+                                .into_future()
+                                .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                        ) as Box<Future<Item = (), Error = FailureError>>
+                    } else {
+                        error!(
+                            "Sending notification to user can not be done. User with id: {} is not found.",
+                            user_id
+                        );
+                        Box::new(future::err(
+                            format_err!("User is not found in users microservice.")
+                                .context(Error::NotFound)
+                                .into(),
+                        ))
                     }
-                });
+                }
+            });
+
+        Box::new(send_to_client)
+    }
+
+    fn notify_store_update_order(
+        &self,
+        store_id: StoreId,
+        order_slug: i32,
+        order_state: String,
+    ) -> Box<Future<Item = (), Error = FailureError>> {
+        let client = self.http_client.clone();
+        let notifications_url = self.config.service_url(StqService::Notifications);
+        let stores_url = self.config.service_url(StqService::Stores);
+        let cluster_url = self.config.cluster.url.clone();
+        let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
+        let send_to_store = client
+            .request::<Option<Store>>(Method::Get, url, None, None)
+            .map_err(From::from)
+            .and_then({
+                let client = client.clone();
+                let notifications_url = notifications_url.clone();
+                let cluster_url = cluster_url.clone();
+                move |store| {
+                    if let Some(store) = store {
+                        if let Some(store_email) = store.email {
+                            let email = OrderUpdateStateForStore {
+                                store_email,
+                                store_id: store.id.to_string(),
+                                order_slug: order_slug.to_string(),
+                                order_state,
+                                cluster_url,
+                            };
+                            let url = format!("{}/stores/order-update-state", notifications_url);
+                            Box::new(
+                                serde_json::to_string(&email)
+                                    .map_err(From::from)
+                                    .into_future()
+                                    .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                            ) as Box<Future<Item = (), Error = FailureError>>
+                        } else {
+                            Box::new(future::ok(()))
+                        }
+                    } else {
+                        error!(
+                            "Sending notification to store can not be done. Store with id: {} is not found.",
+                            store_id
+                        );
+                        Box::new(future::err(
+                            format_err!("Store is not found in stores microservice.")
+                                .context(Error::NotFound)
+                                .into(),
+                        ))
+                    }
+                }
+            });
+
+        Box::new(send_to_store)
+    }
+
+    fn notify_on_create(self, orders: &[Order]) -> ServiceFuture<Self, ()> {
+        let mut orders_futures = vec![];
+        for order in orders {
+            let send_to_client = self.notify_user_create_order(order.customer_id, order.slug);
+            let send_to_store = self.notify_store_create_order(order.store_id, order.slug);
             let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
             orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
         }
 
         Box::new(
             join_all(orders_futures)
-                .map_err(|e: FailureError| e.context("Setting new orders status error.".to_string()).into())
+                .map_err(|e: FailureError| e.context("Notifying on create orders error.".to_string()).into())
+                .then(|res| match res {
+                    Ok(_) => Ok((self, ())),
+                    Err(e) => Err((self, e)),
+                }),
+        )
+    }
+
+    fn notify_on_update(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
+        let mut orders_futures = vec![];
+        for order in orders {
+            if let Some(order) = order {
+                let send_to_client = self.notify_user_update_order(order.customer_id, order.slug, order.state.to_string());
+                let send_to_store = self.notify_store_update_order(order.store_id, order.slug, order.state.to_string());
+                let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
+                orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
+            }
+        }
+
+        Box::new(
+            join_all(orders_futures)
+                .map_err(|e: FailureError| e.context("Notifying on update orders error.".to_string()).into())
                 .then(|res| match res {
                     Ok(_) => Ok((self, ())),
                     Err(e) => Err((self, e)),
@@ -258,11 +396,85 @@ impl OrderServiceImpl {
                 saga_id: SagaId::new(),
             };
             s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
-                s.notify_user(&orders).then(|res| match res {
+                s.notify_on_create(&orders).then(|res| match res {
                     Ok((s, _)) => Ok((s, invoice)),
                     Err((s, _)) => Ok((s, invoice)),
                 })
             })
+        }))
+    }
+
+    // Contains happy path for Order creation
+    fn update_orders_happy(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, ()> {
+        Box::new(self.update_orders(orders_info).and_then(move |(s, orders)| {
+            s.notify_on_update(&orders).then(|res| match res {
+                Ok((s, _)) => Ok((s, ())),
+                Err((s, _)) => Ok((s, ())),
+            })
+        }))
+    }
+
+    fn update_orders(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, Vec<Option<Order>>> {
+        debug!("Updating orders status: {}", orders_info);
+
+        let client = self.http_client.clone();
+        let orders_url = self.config.service_url(StqService::Orders);
+
+        let mut orders_futures = vec![];
+        for order_info in orders_info.0 {
+            match &order_info.status {
+                OrderState::AmountExpired | OrderState::TransactionPending => continue, // do not set these invoice statuses to orders
+                _ => {}
+            }
+            let payload: UpdateStatePayload = order_info.clone().into();
+            let body = serde_json::to_string(&payload).unwrap_or_default();
+            let url = format!("{}/{}/by-id/{}", orders_url.clone(), StqModel::Order.to_url(), order_info.order_id);
+            let mut headers = Headers::new();
+            headers.set(Authorization(order_info.customer_id.0.to_string()));
+            let res = client
+                .request::<Option<Order>>(Method::Get, url, None, Some(headers))
+                .map_err(|e| {
+                    format_err!("Setting new status in orders microservice error occured.")
+                        .context(Error::HttpClient(e))
+                        .into()
+                })
+                .and_then({
+                    let client = client.clone();
+                    let orders_url = orders_url.clone();
+                    move |order| {
+                        if let Some(order) = order {
+                            if order.state == order_info.status {
+                                // if this status already set, do not update
+                                Box::new(future::ok(None)) as Box<Future<Item = Option<Order>, Error = FailureError>>
+                            } else {
+                                let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order.id);
+                                let mut headers = Headers::new();
+                                headers.set(Authorization("1".to_string()));
+                                Box::new(
+                                    client
+                                        .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
+                                        .map_err(|e| {
+                                            format_err!("Setting new status in orders microservice error occured.")
+                                                .context(Error::HttpClient(e))
+                                                .into()
+                                        }),
+                                ) as Box<Future<Item = Option<Order>, Error = FailureError>>
+                            }
+                        } else {
+                            Box::new(future::err(
+                                format_err!("Order is not found in orders microservice! id: {}", order_info.order_id.0)
+                                    .context(Error::NotFound)
+                                    .into(),
+                            )) as Box<Future<Item = Option<Order>, Error = FailureError>>
+                        }
+                    }
+                });
+            orders_futures.push(Box::new(res) as Box<Future<Item = Option<Order>, Error = FailureError>>);
+        }
+
+        Box::new(join_all(orders_futures).then(|res| match res {
+            Ok(orders) => Ok((self, orders)),
+            Err(e) => Err((self, e)),
         }))
     }
 
@@ -360,149 +572,17 @@ impl OrderService for OrderServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<OrderService>, e))
                     })
-                }),
+                })
+                .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
         )
     }
 
-    fn update_state(self, orders_info: BillingOrdersVec) -> Box<Future<Item = (), Error = FailureError>> {
+    fn update_state(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()> {
         debug!("Updating orders status: {}", orders_info);
-
-        let client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
-        let notifications_url = self.config.service_url(StqService::Notifications);
-        let users_url = self.config.service_url(StqService::Users);
-        let stores_url = self.config.service_url(StqService::Stores);
-        let cluster_url = self.config.cluster.url.clone();
-
-        let mut orders_futures = vec![];
-        for order_info in orders_info.0 {
-            let payload: UpdateStatePayload = order_info.clone().into();
-            let body = serde_json::to_string(&payload).unwrap_or_default();
-            let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order_info.order_id.0);
-            let mut headers = Headers::new();
-            headers.set(Authorization(order_info.customer_id.0.to_string()));
-            let res = client
-                .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
-                .map_err(|e| {
-                    format_err!("Setting new status in orders microservice error occured.")
-                        .context(Error::HttpClient(e))
-                        .into()
-                })
-                .and_then({
-                    let client = client.clone();
-                    let customer_id = order_info.customer_id.0;
-                    let store_id = order_info.store_id.0;
-                    let users_url = users_url.clone();
-                    let stores_url = stores_url.clone();
-                    let notifications_url = notifications_url.clone();
-                    let cluster_url = cluster_url.clone();
-
-                    move |order| {
-                        if let Some(order) = order {
-                            let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), order.customer_id);
-                            let mut headers = Headers::new();
-                            headers.set(Authorization(customer_id.to_string()));
-                            let send_to_client = client
-                                .request::<Option<User>>(Method::Get, url, None, Some(headers))
-                                .map_err(From::from)
-                                .and_then({
-                                    let client = client.clone();
-                                    let notifications_url = notifications_url.clone();
-                                    let order_slug = order.slug;
-                                    let order_state = order.state.clone();
-                                    let cluster_url = cluster_url.clone();
-                                    move |user| {
-                                        if let Some(user) = user {
-                                            let user = EmailUser {
-                                                email: user.email.clone(),
-                                                first_name: user.first_name.unwrap_or("user".to_string()),
-                                                last_name: user.last_name.unwrap_or("".to_string()),
-                                            };
-                                            let email = OrderUpdateStateForUser {
-                                                user,
-                                                order_slug: order_slug.to_string(),
-                                                order_state,
-                                                cluster_url,
-                                            };
-                                            let url = format!("{}/users/order-update-state", notifications_url);
-                                            Box::new(serde_json::to_string(&email).map_err(From::from).into_future().and_then(
-                                                move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from),
-                                            )) as Box<Future<Item = (), Error = FailureError>>
-                                        } else {
-                                            error!(
-                                                "Sending notification to user can not be done. User with id: {} is not found.",
-                                                customer_id
-                                            );
-                                            Box::new(future::err(
-                                                format_err!("User is not found in users microservice.")
-                                                    .context(Error::NotFound)
-                                                    .into(),
-                                            ))
-                                        }
-                                    }
-                                });
-
-                            let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), order.store_id);
-                            let send_to_store = client
-                                .request::<Option<Store>>(Method::Get, url, None, None)
-                                .map_err(From::from)
-                                .and_then({
-                                    let client = client.clone();
-                                    let notifications_url = notifications_url.clone();
-                                    let order_slug = order.slug;
-                                    let order_state = order.state.clone();
-                                    let cluster_url = cluster_url.clone();
-                                    move |store| {
-                                        if let Some(store) = store {
-                                            if let Some(store_email) = store.email {
-                                                let email = OrderUpdateStateForStore {
-                                                    store_email,
-                                                    store_id: store.id.to_string(),
-                                                    order_slug: order_slug.to_string(),
-                                                    order_state,
-                                                    cluster_url,
-                                                };
-                                                let url = format!("{}/stores/order-update-state", notifications_url);
-                                                Box::new(serde_json::to_string(&email).map_err(From::from).into_future().and_then(
-                                                    move |body| {
-                                                        client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)
-                                                    },
-                                                ))
-                                                    as Box<Future<Item = (), Error = FailureError>>
-                                            } else {
-                                                Box::new(future::ok(()))
-                                            }
-                                        } else {
-                                            error!(
-                                                "Sending notification to store can not be done. Store with id: {} is not found.",
-                                                store_id
-                                            );
-                                            Box::new(future::err(
-                                                format_err!("Store is not found in stores microservice.")
-                                                    .context(Error::NotFound)
-                                                    .into(),
-                                            ))
-                                        }
-                                    }
-                                });
-                            Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())))
-                                as Box<Future<Item = (), Error = FailureError>>
-                        } else {
-                            Box::new(future::err(
-                                format_err!("Order is not found in orders microservice! id: {}", order_info.order_id.0)
-                                    .context(Error::NotFound)
-                                    .into(),
-                            ))
-                        }
-                    }
-                });
-            orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
-        }
-
         Box::new(
-            join_all(orders_futures)
-                .map(|_| ())
-                .map_err(|e: FailureError| e.context("Setting new orders status error.".to_string()).into()),
+            self.update_orders_happy(orders_info)
+                .map(|(s, _)| (Box::new(s) as Box<OrderService>, ()))
+                .or_else(|(s, e)| futures::future::err((Box::new(s) as Box<OrderService>, e))),
         )
     }
 }
