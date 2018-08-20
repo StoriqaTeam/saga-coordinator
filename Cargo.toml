@@ -24,6 +24,7 @@ regex = "0.2"
 serde_json = "1.0"
 serde_derive = "^1.0.8"
 serde = "^1.0.8"
+stq_api = { path = "vendor/libstqbackend/api" }
 stq_routes = { path = "vendor/libstqbackend/routes" }
 stq_router = { path = "vendor/libstqbackend/router" }
 stq_http = { path = "vendor/libstqbackend/http" }

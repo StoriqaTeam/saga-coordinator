@@ -16,6 +16,7 @@ extern crate tokio_core;
 extern crate uuid;
 extern crate validator;
 
+extern crate stq_api;
 extern crate stq_http;
 extern crate stq_logging;
 extern crate stq_router;

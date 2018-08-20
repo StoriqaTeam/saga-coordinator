@@ -107,7 +107,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
@@ -136,7 +137,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),

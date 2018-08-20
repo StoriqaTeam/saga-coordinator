@@ -11,12 +11,16 @@ use hyper::Method;
 
 use serde_json;
 
+use stq_api::orders::Order;
+use stq_api::orders::OrderClient;
+use stq_api::rpc_client::RestApiClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_static_resources::{EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore,
-                           OrderUpdateStateForUser};
-use stq_types::{SagaId, StoreId, UserId};
+use stq_static_resources::{
+    EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
+};
+use stq_types::{OrderSlug, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -34,11 +38,11 @@ pub struct OrderServiceImpl {
     pub http_client: Arc<HttpClientHandle>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
-    pub user_id: Option<i32>,
+    pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<i32>) -> Self {
+    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<UserId>) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
             http_client,
@@ -58,30 +62,21 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
-        let mut headers = Headers::new();
-        if let Some(ref user_id) = self.user_id {
-            headers.set(Authorization(user_id.to_string()));
-        };
-
         let orders_url = self.config.service_url(StqService::Orders);
-        let client = self.http_client.clone();
-
-        let res = serde_json::to_string(&convert_cart)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<Vec<Order>>(
-                        Method::Post,
-                        format!("{}/{}/create_from_cart", orders_url, StqModel::Order.to_url()),
-                        Some(body),
-                        Some(headers),
-                    )
-                    .map_err(|e| {
-                        format_err!("Converting cart in orders microservice failed.")
-                            .context(Error::HttpClient(e))
-                            .into()
-                    })
+        let rpc_client = RestApiClient::new(&orders_url, self.user_id.clone());
+        let res = rpc_client
+            .convert_cart(
+                Some(convert_cart.conversion_id),
+                convert_cart.convert_cart.customer_id,
+                convert_cart.convert_cart.prices,
+                convert_cart.convert_cart.address,
+                convert_cart.convert_cart.receiver_name,
+                convert_cart.convert_cart.receiver_phone,
+            )
+            .map_err(|e| {
+                format_err!("Converting cart in orders microservice failed.")
+                    .context(Error::RpcClient(e))
+                    .into()
             })
             .inspect(move |_| {
                 log.lock()
@@ -89,7 +84,7 @@ impl OrderServiceImpl {
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
             })
             .then(|res| match res {
-                Ok(user) => Ok((self, user)),
+                Ok(orders) => Ok((self, orders)),
                 Err(e) => Err((self, e)),
             });
 
@@ -137,7 +132,7 @@ impl OrderServiceImpl {
         Box::new(res)
     }
 
-    fn notify_user_create_order(&self, user_id: UserId, order_slug: i32) -> Box<Future<Item = (), Error = FailureError>> {
+    fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
@@ -186,7 +181,7 @@ impl OrderServiceImpl {
         Box::new(send_to_client)
     }
 
-    fn notify_store_create_order(&self, store_id: StoreId, order_slug: i32) -> Box<Future<Item = (), Error = FailureError>> {
+    fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let stores_url = self.config.service_url(StqService::Stores);
@@ -238,7 +233,7 @@ impl OrderServiceImpl {
     fn notify_user_update_order(
         &self,
         user_id: UserId,
-        order_slug: i32,
+        order_slug: OrderSlug,
         order_state: String,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
@@ -293,7 +288,7 @@ impl OrderServiceImpl {
     fn notify_store_update_order(
         &self,
         store_id: StoreId,
-        order_slug: i32,
+        order_slug: OrderSlug,
         order_state: String,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
@@ -348,8 +343,8 @@ impl OrderServiceImpl {
     fn notify_on_create(self, orders: &[Order]) -> ServiceFuture<Self, ()> {
         let mut orders_futures = vec![];
         for order in orders {
-            let send_to_client = self.notify_user_create_order(order.customer_id, order.slug);
-            let send_to_store = self.notify_store_create_order(order.store_id, order.slug);
+            let send_to_client = self.notify_user_create_order(order.customer, order.slug);
+            let send_to_store = self.notify_store_create_order(order.store, order.slug);
             let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
             orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
         }
@@ -368,8 +363,8 @@ impl OrderServiceImpl {
         let mut orders_futures = vec![];
         for order in orders {
             if let Some(order) = order {
-                let send_to_client = self.notify_user_update_order(order.customer_id, order.slug, order.state.to_string());
-                let send_to_store = self.notify_store_update_order(order.store_id, order.slug, order.state.to_string());
+                let send_to_client = self.notify_user_update_order(order.customer, order.slug, order.state.to_string());
+                let send_to_store = self.notify_store_update_order(order.store, order.slug, order.state.to_string());
                 let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
                 orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
             }
