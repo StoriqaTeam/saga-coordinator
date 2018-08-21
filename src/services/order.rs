@@ -63,7 +63,7 @@ impl OrderServiceImpl {
             .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
         let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id.clone());
+        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
         let res = rpc_client
             .convert_cart(
                 Some(convert_cart.conversion_id),
@@ -149,8 +149,8 @@ impl OrderServiceImpl {
                     if let Some(user) = user {
                         let user = EmailUser {
                             email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or("user".to_string()),
-                            last_name: user.last_name.unwrap_or("".to_string()),
+                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                         };
                         let email = OrderCreateForUser {
                             user,
@@ -252,8 +252,8 @@ impl OrderServiceImpl {
                     if let Some(user) = user {
                         let user = EmailUser {
                             email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or("user".to_string()),
-                            last_name: user.last_name.unwrap_or("".to_string()),
+                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                         };
                         let email = OrderUpdateStateForUser {
                             user,
