@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
+use failure::Fail;
 use futures;
 use futures::future;
 use futures::future::join_all;
@@ -8,7 +9,6 @@ use futures::prelude::*;
 use hyper::header::Authorization;
 use hyper::Headers;
 use hyper::Method;
-
 use serde_json;
 
 use stq_api::orders::Order;
@@ -74,8 +74,8 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.receiver_phone,
             )
             .map_err(|e| {
-                format_err!("Converting cart in orders microservice failed.")
-                    .context(Error::RpcClient(e))
+                e.context("Converting cart in orders microservice failed.")
+                    .context(Error::RpcClient)
                     .into()
             })
             .inspect(move |_| {
@@ -114,8 +114,8 @@ impl OrderServiceImpl {
                 client
                     .request::<Invoice>(Method::Post, format!("{}/invoices", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
-                        format_err!("Creating invoice in billing microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating invoice in billing microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -429,8 +429,8 @@ impl OrderServiceImpl {
             let res = client
                 .request::<Option<Order>>(Method::Get, url, None, Some(headers))
                 .map_err(|e| {
-                    format_err!("Setting new status in orders microservice error occured.")
-                        .context(Error::HttpClient(e))
+                    e.context("Setting new status in orders microservice error occured.")
+                        .context(Error::HttpClient)
                         .into()
                 })
                 .and_then({
@@ -449,8 +449,8 @@ impl OrderServiceImpl {
                                     client
                                         .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
                                         .map_err(|e| {
-                                            format_err!("Setting new status in orders microservice error occured.")
-                                                .context(Error::HttpClient(e))
+                                            e.context("Setting new status in orders microservice error occured.")
+                                                .context(Error::HttpClient)
                                                 .into()
                                         }),
                                 ) as Box<Future<Item = Option<Order>, Error = FailureError>>
@@ -509,8 +509,8 @@ impl OrderServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Order service create_revert OrdersConvertCartStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Order service create_revert OrdersConvertCartStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -538,8 +538,8 @@ impl OrderServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Order service create_revert BillingCreateInvoiceStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Order service create_revert BillingCreateInvoiceStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })

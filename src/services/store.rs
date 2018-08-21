@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
+use failure::Fail;
 use futures;
 use futures::prelude::*;
 use hyper::header::Authorization;
@@ -72,8 +73,8 @@ impl StoreServiceImpl {
                         Some(headers),
                     )
                     .map_err(|e| {
-                        format_err!("Creating store in stores microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating store in stores microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -126,8 +127,8 @@ impl StoreServiceImpl {
                         Some(headers),
                     )
                     .map_err(|e| {
-                        format_err!("Creating role in warehouses microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating role in warehouses microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -180,8 +181,8 @@ impl StoreServiceImpl {
                         Some(headers),
                     )
                     .map_err(|e| {
-                        format_err!("Creating role in orders microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating role in orders microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -233,8 +234,8 @@ impl StoreServiceImpl {
                         Some(headers),
                     )
                     .map_err(|e| {
-                        format_err!("Creating role in billing microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating role in billing microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -273,8 +274,8 @@ impl StoreServiceImpl {
                 client
                     .request::<Merchant>(Method::Post, format!("{}/merchants/store", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
-                        format_err!("Creating merchant in billing microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating merchant in billing microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -349,8 +350,8 @@ impl StoreServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Store service create_revert StoreCreationStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Store service create_revert StoreCreationStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -378,8 +379,8 @@ impl StoreServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Store service create_revert WarehouseRoleSetStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Store service create_revert WarehouseRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -407,8 +408,8 @@ impl StoreServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Store service create_revert OrdersRoleSetStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Store service create_revert OrdersRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -436,8 +437,8 @@ impl StoreServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Store service create_revert BillingRoleSetStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Store service create_revert BillingRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -462,8 +463,8 @@ impl StoreServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert BillingCreateMerchantStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Account service create_revert BillingCreateMerchantStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
