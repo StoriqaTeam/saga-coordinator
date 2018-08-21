@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
+use failure::Fail;
 use futures;
 use futures::future;
 use futures::prelude::*;
@@ -83,8 +84,8 @@ impl AccountServiceImpl {
                 client
                     .request::<User>(Method::Post, format!("{}/{}", users_url, StqModel::User.to_url()), Some(body), None)
                     .map_err(|e| {
-                        format_err!("Creating user in users microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating user in users microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -107,7 +108,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
@@ -121,8 +123,8 @@ impl AccountServiceImpl {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
-                    format_err!("Creating role in users microservice failed.")
-                        .context(Error::HttpClient(e))
+                    e.context("Creating role in users microservice failed.")
+                        .context(Error::HttpClient)
                         .into(),
                 )),
             });
@@ -136,7 +138,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
@@ -150,8 +153,8 @@ impl AccountServiceImpl {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
-                    format_err!("Creating role in stores microservice failed.")
-                        .context(Error::HttpClient(e))
+                    e.context("Creating role in stores microservice failed.")
+                        .context(Error::HttpClient)
                         .into(),
                 )),
             });
@@ -194,8 +197,8 @@ impl AccountServiceImpl {
                         Some(headers),
                     )
                     .map_err(|e| {
-                        format_err!("Creating role in billing microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating role in billing microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -235,8 +238,8 @@ impl AccountServiceImpl {
                 client
                     .request::<Merchant>(Method::Post, format!("{}/merchants/user", billing_url), Some(body), Some(headers))
                     .map_err(|e| {
-                        format_err!("Creating merchant in billing microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating merchant in billing microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
             })
@@ -271,8 +274,8 @@ impl AccountServiceImpl {
                     let mut headers = Headers::new();
                     headers.set(Authorization(user_id.to_string()));
                     client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                        format_err!("Creating email verify token in users microservice failed.")
-                            .context(Error::HttpClient(e))
+                        e.context("Creating email verify token in users microservice failed.")
+                            .context(Error::HttpClient)
                             .into()
                     })
                 }
@@ -296,8 +299,8 @@ impl AccountServiceImpl {
                         .into_future()
                         .and_then(move |body| {
                             client.request::<()>(Method::Post, url, Some(body), None).map_err(|e| {
-                                format_err!("Sending email to notifications microservice failed.")
-                                    .context(Error::HttpClient(e))
+                                e.context("Sending email to notifications microservice failed.")
+                                    .context(Error::HttpClient)
                                     .into()
                             })
                         })
@@ -314,6 +317,7 @@ impl AccountServiceImpl {
     // Contains happy path for account creation
     fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
         let saga_id = SagaId::new();
+        let provider = input.identity.provider.clone();
 
         Box::new(
             self.create_user(input, saga_id)
@@ -321,11 +325,16 @@ impl AccountServiceImpl {
                 .and_then(|(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_billing_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_merchant(user.id).map(|(s, _)| (s, user)))
-                .and_then(|(s, user)| {
-                    s.notify_user(user.clone()).then(|res| match res {
-                        Ok((s, _)) => Ok((s, user)),
-                        Err((s, _)) => Ok((s, user)),
-                    })
+                .and_then(move |(s, user)| {
+                    if provider == Provider::Email {
+                        // only if provider is email it needs to ber verified
+                        Box::new(s.notify_user(user.clone()).then(|res| match res {
+                            Ok((s, _)) => Ok((s, user)),
+                            Err((s, _)) => Ok((s, user)),
+                        })) as ServiceFuture<Self, User>
+                    } else {
+                        Box::new(future::ok((s, user))) as ServiceFuture<Self, User>
+                    }
                 }),
         )
     }
@@ -354,8 +363,8 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert StoreRoleSetStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Account service create_revert StoreRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -380,8 +389,8 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert AccountCreationStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Account service create_revert AccountCreationStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -409,8 +418,8 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Store service create_revert BillingRoleSetStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context("Store service create_revert BillingRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -435,8 +444,9 @@ impl AccountServiceImpl {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    format_err!("Account service create_revert BillingCreateMerchantStart error occured.")
-                                        .context(Error::HttpClient(e))
+                                    e.context(format_err!(
+                                        "Account service create_revert BillingCreateMerchantStart error occured."
+                                    )).context(Error::HttpClient)
                                         .into(),
                                 )),
                             })
@@ -480,8 +490,8 @@ impl AccountService for AccountServiceImpl {
         let res = client
             .request::<Option<User>>(Method::Get, url, None, Some(headers))
             .map_err(|e| {
-                format_err!("Receiving user from users microservice failed.")
-                    .context(Error::HttpClient(e))
+                e.context("Receiving user from users microservice failed.")
+                    .context(Error::HttpClient)
                     .into()
             })
             .and_then(move |user| {
@@ -499,8 +509,8 @@ impl AccountService for AccountServiceImpl {
                                     let mut headers = Headers::new();
                                     headers.set(Authorization(user_id.to_string()));
                                     client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                                        format_err!("Creating password reset token in users microservice failed.")
-                                            .context(Error::HttpClient(e))
+                                        e.context("Creating password reset token in users microservice failed.")
+                                            .context(Error::HttpClient)
                                             .into()
                                     })
                                 }
@@ -523,9 +533,9 @@ impl AccountService for AccountServiceImpl {
                                         .map_err(From::from)
                                         .into_future()
                                         .and_then(move |body| {
-                                            client.request::<()>(Method::Post, url, Some(body), None).map_err(|e| {
-                                                format_err!("Sending notification failed.").context(Error::HttpClient(e)).into()
-                                            })
+                                            client
+                                                .request::<()>(Method::Post, url, Some(body), None)
+                                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                         })
                                 }
                             }),
@@ -557,8 +567,8 @@ impl AccountService for AccountServiceImpl {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
                         client.request::<String>(Method::Put, url, Some(body), Some(headers)).map_err(|e| {
-                            format_err!("Applying password reset token in users microservice failed.")
-                                .context(Error::HttpClient(e))
+                            e.context("Applying password reset token in users microservice failed.")
+                                .context(Error::HttpClient)
                                 .into()
                         })
                     }
@@ -570,8 +580,8 @@ impl AccountService for AccountServiceImpl {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
                         client.request::<Option<User>>(Method::Get, url, None, Some(headers)).map_err(|e| {
-                            format_err!("Receiving user from users microservice failed.")
-                                .context(Error::HttpClient(e))
+                            e.context("Receiving user from users microservice failed.")
+                                .context(Error::HttpClient)
                                 .into()
                         })
                     }
@@ -594,7 +604,7 @@ impl AccountService for AccountServiceImpl {
                                     .and_then(move |body| {
                                         client
                                             .request::<()>(Method::Post, url, Some(body), None)
-                                            .map_err(|e| format_err!("Sending notification failed.").context(Error::HttpClient(e)).into())
+                                            .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                     }),
                             )
                         } else {
@@ -621,8 +631,8 @@ impl AccountService for AccountServiceImpl {
         let res = client
             .request::<Option<User>>(Method::Get, url, None, Some(headers))
             .map_err(|e| {
-                format_err!("Receiving user from users microservice failed.")
-                    .context(Error::HttpClient(e))
+                e.context("Receiving user from users microservice failed.")
+                    .context(Error::HttpClient)
                     .into()
             })
             .and_then(move |user| {
@@ -640,8 +650,8 @@ impl AccountService for AccountServiceImpl {
                                     let mut headers = Headers::new();
                                     headers.set(Authorization(user_id.to_string()));
                                     client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                                        format_err!("Creating email verification token in users microservice failed.")
-                                            .context(Error::HttpClient(e))
+                                        e.context("Creating email verification token in users microservice failed.")
+                                            .context(Error::HttpClient)
                                             .into()
                                     })
                                 }
@@ -664,9 +674,9 @@ impl AccountService for AccountServiceImpl {
                                         .map_err(From::from)
                                         .into_future()
                                         .and_then(move |body| {
-                                            client.request::<()>(Method::Post, url, Some(body), None).map_err(|e| {
-                                                format_err!("Sending notification failed.").context(Error::HttpClient(e)).into()
-                                            })
+                                            client
+                                                .request::<()>(Method::Post, url, Some(body), None)
+                                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                         })
                                 }
                             }),
@@ -699,8 +709,8 @@ impl AccountService for AccountServiceImpl {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
                         client.request::<String>(Method::Put, url, Some(body), Some(headers)).map_err(|e| {
-                            format_err!("Applying email verification token in users microservice failed.")
-                                .context(Error::HttpClient(e))
+                            e.context("Applying email verification token in users microservice failed.")
+                                .context(Error::HttpClient)
                                 .into()
                         })
                     }
@@ -712,8 +722,8 @@ impl AccountService for AccountServiceImpl {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
                         client.request::<Option<User>>(Method::Get, url, None, Some(headers)).map_err(|e| {
-                            format_err!("Receiving user from users microservice failed.")
-                                .context(Error::HttpClient(e))
+                            e.context("Receiving user from users microservice failed.")
+                                .context(Error::HttpClient)
                                 .into()
                         })
                     }
@@ -736,7 +746,7 @@ impl AccountService for AccountServiceImpl {
                                     .and_then(move |body| {
                                         client
                                             .request::<()>(Method::Post, url, Some(body), None)
-                                            .map_err(|e| format_err!("Sending notification failed.").context(Error::HttpClient(e)).into())
+                                            .map_err(|e| e.context("Sending notification failed.").into())
                                     }),
                             )
                         } else {

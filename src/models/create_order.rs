@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::time::SystemTime;
 
-use chrono::prelude::*;
-
+use stq_api::orders::{AddressFull, Order};
 use stq_static_resources::OrderState;
 use stq_types::*;
 
@@ -11,7 +10,7 @@ use stq_types::*;
 pub struct ConvertCart {
     pub customer_id: UserId,
     #[serde(flatten)]
-    pub address: Address,
+    pub address: AddressFull,
     pub receiver_name: String,
     pub receiver_phone: String,
     pub prices: CartProductWithPriceHash,
@@ -55,43 +54,6 @@ impl fmt::Display for CreateInvoice {
             self.orders, self.customer_id, self.saga_id, self.currency_id
         )
     }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-pub struct Address {
-    #[serde(rename = "address")]
-    pub value: Option<String>,
-    pub country: Option<String>,
-    pub administrative_area_level_1: Option<String>,
-    pub administrative_area_level_2: Option<String>,
-    pub locality: Option<String>,
-    pub political: Option<String>,
-    pub postal_code: Option<String>,
-    pub route: Option<String>,
-    pub street_number: Option<String>,
-    pub place_id: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Order {
-    pub id: OrderId,
-    pub state: OrderState,
-    #[serde(rename = "customer")]
-    pub customer_id: UserId,
-    #[serde(rename = "product")]
-    pub product_id: ProductId,
-    pub quantity: Quantity,
-    #[serde(rename = "store")]
-    pub store_id: StoreId,
-    pub price: ProductPrice,
-    pub currency_id: CurrencyId,
-    pub receiver_name: String,
-    pub slug: i32,
-    pub payment_status: bool,
-    pub delivery_company: Option<String>,
-    pub track_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub address: Address,
 }
 
 pub type CartProductWithPriceHash = HashMap<ProductId, ProductSellerPrice>;

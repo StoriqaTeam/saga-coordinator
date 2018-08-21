@@ -56,7 +56,7 @@ pub struct NewUser {
     pub saga_id: SagaId,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Provider {
     Google,
     Facebook,

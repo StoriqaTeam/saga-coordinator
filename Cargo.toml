@@ -15,7 +15,7 @@ path = "src/main.rs"
 log="0.4"
 env_logger="0.5.6"
 chrono = { version = "0.4", features = ["serde"] }
-config = "0.7"
+config = { version = "0.9", default-features = false, features = ["toml"] }
 failure = "0.1.1"
 futures = "0.1.17"
 futures-cpupool = "0.1.7"
@@ -24,6 +24,7 @@ regex = "0.2"
 serde_json = "1.0"
 serde_derive = "^1.0.8"
 serde = "^1.0.8"
+stq_api = { path = "vendor/libstqbackend/api" }
 stq_routes = { path = "vendor/libstqbackend/routes" }
 stq_router = { path = "vendor/libstqbackend/router" }
 stq_http = { path = "vendor/libstqbackend/http" }

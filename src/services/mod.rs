@@ -17,23 +17,24 @@ use errors::Error;
 
 pub fn parse_validation_errors(e: FailureError, errors: &'static [&str]) -> FailureError {
     {
-        let real_err = e.causes()
+        let real_err = e
+            .causes()
             .filter_map(|cause| {
-                if let Some(ctx) = cause.downcast_ref::<Context<Error>>() {
+                if let Some(ctx) = cause.downcast_ref::<Context<HttpError>>() {
                     Some(ctx.get_context())
                 } else {
-                    cause.downcast_ref::<Error>()
+                    cause.downcast_ref::<HttpError>()
                 }
             })
             .nth(0);
-        if let Some(Error::HttpClient(HttpError::Api(
+        if let Some(HttpError::Api(
             _,
             Some(ErrorMessage {
                 payload,
                 code,
                 description,
             }),
-        ))) = real_err
+        )) = real_err
         {
             match code {
                 x if x == &StatusCode::Forbidden.as_u16() => return format_err!("{}", description).context(Error::Forbidden).into(),
