@@ -264,7 +264,7 @@ impl AccountServiceImpl {
 
         let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
         let reset = ResetRequest { email: user.email.clone() };
-        let user_id = user.id.clone();
+        let user_id = user.id;
         let res = serde_json::to_string(&reset)
             .map_err(From::from)
             .into_future()
@@ -285,8 +285,8 @@ impl AccountServiceImpl {
                 move |token| {
                     let user = EmailUser {
                         email: user.email.clone(),
-                        first_name: user.first_name.unwrap_or("user".to_string()),
-                        last_name: user.last_name.unwrap_or("".to_string()),
+                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                     };
                     let email = EmailVerificationForUser {
                         user,
@@ -496,7 +496,7 @@ impl AccountService for AccountServiceImpl {
             })
             .and_then(move |user| {
                 if let Some(user) = user {
-                    let user_id = user.id.clone();
+                    let user_id = user.id;
                     let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
 
                     Box::new(
@@ -520,8 +520,8 @@ impl AccountService for AccountServiceImpl {
                                 move |token| {
                                     let user = EmailUser {
                                         email: user.email.clone(),
-                                        first_name: user.first_name.unwrap_or("user".to_string()),
-                                        last_name: user.last_name.unwrap_or("".to_string()),
+                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                                     };
                                     let email = PasswordResetForUser {
                                         user,
@@ -592,8 +592,8 @@ impl AccountService for AccountServiceImpl {
                         if let Some(user) = user {
                             let user = EmailUser {
                                 email: user.email.clone(),
-                                first_name: user.first_name.unwrap_or("user".to_string()),
-                                last_name: user.last_name.unwrap_or("".to_string()),
+                                first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                             };
                             let email = ApplyPasswordResetForUser { user };
                             let url = format!("{}/{}/apply-password-reset", notification_url, StqModel::User.to_url());
@@ -637,7 +637,7 @@ impl AccountService for AccountServiceImpl {
             })
             .and_then(move |user| {
                 if let Some(user) = user {
-                    let user_id = user.id.clone();
+                    let user_id = user.id;
                     let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
 
                     Box::new(
@@ -661,8 +661,8 @@ impl AccountService for AccountServiceImpl {
                                 move |token| {
                                     let user = EmailUser {
                                         email: user.email.clone(),
-                                        first_name: user.first_name.unwrap_or("user".to_string()),
-                                        last_name: user.last_name.unwrap_or("".to_string()),
+                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                                     };
                                     let email = EmailVerificationForUser {
                                         user,
@@ -734,8 +734,8 @@ impl AccountService for AccountServiceImpl {
                         if let Some(user) = user {
                             let user = EmailUser {
                                 email: user.email.clone(),
-                                first_name: user.first_name.unwrap_or("user".to_string()),
-                                last_name: user.last_name.unwrap_or("".to_string()),
+                                first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                             };
                             let email = ApplyEmailVerificationForUser { user };
                             let url = format!("{}/{}/apply-email-verification", notification_url, StqModel::User.to_url());
