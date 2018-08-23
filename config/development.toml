@@ -20,6 +20,9 @@ url="http://warehouses:8000"
 [notifications_microservice]
 url="http://notifications:8000"
 
+[delivery_microservice]
+url="http://delivery:8000"
+
 [graylog]
 addr = "udplog.stq.cloud:32303"
 

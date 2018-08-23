@@ -93,6 +93,8 @@ pub struct BillingRole {
     pub data: Option<StoreId>,
 }
 
+pub type DeliveryRole = BillingRole;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateStoreMerchantPayload {
     pub id: StoreId,
@@ -110,6 +112,8 @@ pub enum CreateStoreOperationStage {
     OrdersRoleSetComplete(RoleEntryId),
     BillingRoleSetStart(RoleEntryId),
     BillingRoleSetComplete(RoleEntryId),
+    DeliveryRoleSetStart(RoleEntryId),
+    DeliveryRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(StoreId),
     BillingCreateMerchantComplete(StoreId),
 }
