@@ -35,14 +35,14 @@ pub trait OrderService {
 
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<UserId>) -> Self {
+    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
             http_client,
