@@ -15,6 +15,7 @@ pub struct Config {
     pub billing_microservice: Microservice,
     pub warehouses_microservice: Microservice,
     pub notifications_microservice: Microservice,
+    pub delivery_microservice: Microservice,
     pub graylog: Option<GrayLogConfig>,
     pub cluster: Cluster,
     pub notification_urls: NotificationUrls,
@@ -78,6 +79,7 @@ impl Config {
             StqService::Orders => self.orders_microservice.url.clone(),
             StqService::Billing => self.billing_microservice.url.clone(),
             StqService::Notifications => self.notifications_microservice.url.clone(),
+            StqService::Delivery => self.delivery_microservice.url.clone(),
         }
     }
 

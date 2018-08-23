@@ -148,6 +148,8 @@ pub enum CreateProfileOperationStage {
     StoreRoleSetComplete(UserId),
     BillingRoleSetStart(RoleEntryId),
     BillingRoleSetComplete(RoleEntryId),
+    DeliveryRoleSetStart(RoleEntryId),
+    DeliveryRoleSetComplete(RoleEntryId),
     BillingCreateMerchantStart(UserId),
     BillingCreateMerchantComplete(UserId),
 }

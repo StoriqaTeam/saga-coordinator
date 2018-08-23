@@ -215,6 +215,59 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
+    fn create_delivery_role(self, user_id: UserId) -> ServiceFuture<Self, DeliveryRole> {
+        // Create delivery role
+        debug!("Creating delivery role, user id: {}", user_id);
+        let log = self.log.clone();
+
+        let new_role_id = RoleEntryId::new();
+        let role = BillingRole {
+            id: new_role_id,
+            user_id,
+            name: StoresRole::User,
+            data: None,
+        };
+
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::DeliveryRoleSetStart(new_role_id));
+
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can add role to delivery
+
+        let client = self.http_client.clone();
+        let delivery_url = self.config.service_url(StqService::Delivery);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<DeliveryRole>(
+                        Method::Post,
+                        format!("{}/{}", delivery_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    )
+                    .map_err(|e| {
+                        e.context("Creating role in delivery microservice failed.")
+                            .context(Error::HttpClient)
+                            .into()
+                    })
+            })
+            .inspect(move |_| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::DeliveryRoleSetComplete(new_role_id));
+            })
+            .then(|res| match res {
+                Ok(delivery_role) => Ok((self, delivery_role)),
+                Err(e) => Err((self, e)),
+            });
+
+        Box::new(res)
+    }
+
     fn create_merchant(self, user_id: UserId) -> ServiceFuture<Self, Merchant> {
         debug!("Creating merchant for user_id: {} in billing microservice", user_id);
         let payload = CreateUserMerchantPayload { id: user_id };
@@ -324,6 +377,7 @@ impl AccountServiceImpl {
                 .and_then(|(s, user)| s.create_user_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_store_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_billing_role(user.id).map(|(s, _)| (s, user)))
+                .and_then(|(s, user)| s.create_delivery_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_merchant(user.id).map(|(s, _)| (s, user)))
                 .and_then(move |(s, user)| {
                     if provider == Provider::Email {
@@ -419,6 +473,35 @@ impl AccountServiceImpl {
                                 Err(e) => Err((
                                     s,
                                     e.context("Store service create_revert BillingRoleSetStart error occured.")
+                                        .context(Error::HttpClient)
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
+                CreateProfileOperationStage::DeliveryRoleSetStart(role_id) => {
+                    debug!("Reverting delivery role, user_id: {}", role_id);
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+                        let mut headers = Headers::new();
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from delivery
+
+                        s.http_client
+                            .request::<Role>(
+                                Method::Delete,
+                                format!("{}/{}/{}", s.config.service_url(StqService::Delivery), "roles/by-id", role_id,),
+                                None,
+                                Some(headers),
+                            )
+                            .then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    e.context("Store service create_revert DeliveryRoleSetStart error occured.")
                                         .context(Error::HttpClient)
                                         .into(),
                                 )),
