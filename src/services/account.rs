@@ -33,13 +33,13 @@ pub trait AccountService {
 
 /// Account service, responsible for Creating user
 pub struct AccountServiceImpl {
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateProfileOperationLog>>,
 }
 
 impl AccountServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
+    pub fn new(http_client: HttpClientHandle, config: config::Config) -> Self {
         let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
         Self { http_client, config, log }
     }

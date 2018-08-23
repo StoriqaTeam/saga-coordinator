@@ -2,6 +2,7 @@ use std::env;
 
 use config_crate::{Config as RawConfig, ConfigError, Environment, File};
 
+use stq_http;
 use stq_logging::GrayLogConfig;
 use stq_routes::service::Service as StqService;
 
@@ -17,6 +18,14 @@ pub struct Config {
     pub graylog: Option<GrayLogConfig>,
     pub cluster: Cluster,
     pub notification_urls: NotificationUrls,
+    pub client: Client,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Client {
+    pub http_client_buffer_size: usize,
+    pub http_client_retries: usize,
+    pub http_timeout_ms: u64,
 }
 
 /// Common server settings
@@ -69,6 +78,14 @@ impl Config {
             StqService::Orders => self.orders_microservice.url.clone(),
             StqService::Billing => self.billing_microservice.url.clone(),
             StqService::Notifications => self.notifications_microservice.url.clone(),
+        }
+    }
+
+    pub fn to_http_config(&self) -> stq_http::client::Config {
+        stq_http::client::Config {
+            http_client_buffer_size: self.client.http_client_buffer_size,
+            http_client_retries: self.client.http_client_retries,
+            timeout_duration_ms: self.client.http_timeout_ms,
         }
     }
 }

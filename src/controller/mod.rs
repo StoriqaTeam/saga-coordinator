@@ -33,7 +33,7 @@ use services::store::{StoreService, StoreServiceImpl};
 
 pub struct ControllerImpl {
     pub config: Config,
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub route_parser: Arc<RouteParser<Route>>,
 }
 
