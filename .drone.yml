@@ -3,8 +3,7 @@ pipeline:
     image: plugins/s3-cache:1
     pull: true
     secrets: [ aws_access_key_id, aws_secret_access_key ]
-    mount:
-    - deps
+    mount: deps
     restore: true
     when:
       event:
@@ -30,6 +29,7 @@ pipeline:
     image: rust:1.28-stretch
     environment:
     - RUN_MODE=k8s
+    - RUST_BACKTRACE=1
     - CARGO_HOME=deps
     commands:
     - rustup component add rustfmt-preview
@@ -41,7 +41,7 @@ pipeline:
       event: pull_request
 
 ###
-# Build and deploy to nightly/stage
+# Build and deploy to nightly / stage
 ###
 
   build:
@@ -57,10 +57,10 @@ pipeline:
   package:
     image: plugins/docker
     repo: storiqateam/stq-saga
+    dockerfile: docker/Dockerfile.run
     tags:
     - ${DRONE_BRANCH//\//_}
     - ${DRONE_BRANCH//\//_}${DRONE_BUILD_NUMBER}
-    dockerfile: docker/Dockerfile.run
     secrets:
     - docker_username
     - docker_password
@@ -69,10 +69,10 @@ pipeline:
   package:
     image: plugins/docker
     repo: storiqateam/stq-saga
+    dockerfile: docker/Dockerfile.run
     tags:
     - '${DRONE_TAG}'
     - latest
-    dockerfile: docker/Dockerfile.run
     secrets:
     - docker_username
     - docker_password
@@ -119,7 +119,7 @@ pipeline:
       event: tag
 
 ###
-# Deploy to stable
+# Deploy to stable / production
 ###
 
   deploy2stable:
@@ -142,11 +142,6 @@ pipeline:
     when:
       event: deployment
       environment: stable
-
-###
-# Deploy to production
-###
-
   deploy2production:
     image: jackthestripper/drone_setimage
     namespace: default
@@ -176,8 +171,7 @@ pipeline:
     image: plugins/s3-cache:1
     pull: true
     secrets: [ aws_access_key_id, aws_secret_access_key ]
-    mount:
-    - deps
+    mount: deps
     rebuild: true
     when:
       event: push
