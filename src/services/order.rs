@@ -390,7 +390,7 @@ impl OrderServiceImpl {
             let create_invoice = CreateInvoice {
                 customer_id: input.customer_id,
                 orders: orders.clone(),
-                currency_id: input.currency_id,
+                currency: input.currency,
                 saga_id: SagaId::new(),
             };
             s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {

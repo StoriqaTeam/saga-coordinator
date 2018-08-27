@@ -3,7 +3,7 @@ use std::fmt;
 use std::time::SystemTime;
 
 use stq_api::orders::{AddressFull, Order};
-use stq_static_resources::OrderState;
+use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -14,7 +14,7 @@ pub struct ConvertCart {
     pub receiver_name: String,
     pub receiver_phone: String,
     pub prices: CartProductWithPriceHash,
-    pub currency_id: CurrencyId,
+    pub currency: Currency,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -43,15 +43,15 @@ pub struct CreateInvoice {
     pub orders: Vec<Order>,
     pub customer_id: UserId,
     pub saga_id: SagaId,
-    pub currency_id: CurrencyId,
+    pub currency: Currency,
 }
 
 impl fmt::Display for CreateInvoice {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "CreateInvoice - orders: {:?}, customer_id: {}, saga_id: {}, currency_id: {})",
-            self.orders, self.customer_id, self.saga_id, self.currency_id
+            "CreateInvoice - orders: {:?}, customer_id: {}, saga_id: {}, currency: {})",
+            self.orders, self.customer_id, self.saga_id, self.currency
         )
     }
 }
@@ -141,7 +141,7 @@ pub struct Invoice {
     pub invoice_id: InvoiceId,
     pub transactions: Vec<Transaction>,
     pub amount: ProductPrice,
-    pub currency_id: CurrencyId,
+    pub currency: Currency,
     pub price_reserved: SystemTime,
     pub state: OrderState,
     pub wallet: Option<String>,
