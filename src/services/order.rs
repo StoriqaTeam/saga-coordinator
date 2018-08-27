@@ -234,7 +234,7 @@ impl OrderServiceImpl {
         &self,
         user_id: UserId,
         order_slug: OrderSlug,
-        order_state: String,
+        order_state: OrderState,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
@@ -258,7 +258,7 @@ impl OrderServiceImpl {
                         let email = OrderUpdateStateForUser {
                             user,
                             order_slug: order_slug.to_string(),
-                            order_state,
+                            order_state: order_state.to_string(),
                             cluster_url,
                         };
                         let url = format!("{}/users/order-update-state", notifications_url);
@@ -289,7 +289,7 @@ impl OrderServiceImpl {
         &self,
         store_id: StoreId,
         order_slug: OrderSlug,
-        order_state: String,
+        order_state: OrderState,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
@@ -310,7 +310,7 @@ impl OrderServiceImpl {
                                 store_email,
                                 store_id: store.id.to_string(),
                                 order_slug: order_slug.to_string(),
-                                order_state,
+                                order_state: order_state.to_string(),
                                 cluster_url,
                             };
                             let url = format!("{}/stores/order-update-state", notifications_url);
@@ -340,31 +340,34 @@ impl OrderServiceImpl {
         Box::new(send_to_store)
     }
 
-    fn notify_on_create(self, orders: &[Order]) -> ServiceFuture<Self, ()> {
-        let mut orders_futures = vec![];
-        for order in orders {
-            let send_to_client = self.notify_user_create_order(order.customer, order.slug);
-            let send_to_store = self.notify_store_create_order(order.store, order.slug);
-            let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
-            orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
-        }
-
-        Box::new(
-            join_all(orders_futures)
-                .map_err(|e: FailureError| e.context("Notifying on create orders error.".to_string()).into())
-                .then(|res| match res {
-                    Ok(_) => Ok((self, ())),
-                    Err(e) => Err((self, e)),
-                }),
-        )
-    }
-
-    fn notify_on_update(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
+    fn notify(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
         let mut orders_futures = vec![];
         for order in orders {
             if let Some(order) = order {
-                let send_to_client = self.notify_user_update_order(order.customer, order.slug, order.state.to_string());
-                let send_to_store = self.notify_store_update_order(order.store, order.slug, order.state.to_string());
+                let send_to_client = match order.state {
+                    OrderState::New => self.notify_user_create_order(order.customer, order.slug),
+                    OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => Box::new(future::ok(())),
+                    OrderState::Paid
+                    | OrderState::InProcessing
+                    | OrderState::Cancelled
+                    | OrderState::Sent
+                    | OrderState::Delivered
+                    | OrderState::Received
+                    | OrderState::Complete => self.notify_user_update_order(order.customer, order.slug, order.state),
+                };
+                let send_to_store = match order.state {
+                    OrderState::New | OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => {
+                        Box::new(future::ok(()))
+                    }
+                    OrderState::Paid => self.notify_store_create_order(order.store, order.slug),
+                    OrderState::InProcessing
+                    | OrderState::Cancelled
+                    | OrderState::Sent
+                    | OrderState::Delivered
+                    | OrderState::Received
+                    | OrderState::Complete => self.notify_store_update_order(order.store, order.slug, order.state),
+                };
+
                 let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
                 orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
             }
@@ -391,10 +394,11 @@ impl OrderServiceImpl {
                 saga_id: SagaId::new(),
             };
             s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
-                s.notify_on_create(&orders).then(|res| match res {
-                    Ok((s, _)) => Ok((s, invoice)),
-                    Err((s, _)) => Ok((s, invoice)),
-                })
+                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                    .then(|res| match res {
+                        Ok((s, _)) => Ok((s, invoice)),
+                        Err((s, _)) => Ok((s, invoice)),
+                    })
             })
         }))
     }
@@ -402,7 +406,7 @@ impl OrderServiceImpl {
     // Contains happy path for Order creation
     fn update_orders_happy(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, ()> {
         Box::new(self.update_orders(orders_info).and_then(move |(s, orders)| {
-            s.notify_on_update(&orders).then(|res| match res {
+            s.notify(&orders).then(|res| match res {
                 Ok((s, _)) => Ok((s, ())),
                 Err((s, _)) => Ok((s, ())),
             })
