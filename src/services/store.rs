@@ -27,14 +27,14 @@ pub trait StoreService {
 
 /// Attributes services, responsible for Attribute-related CRUD operations
 pub struct StoreServiceImpl {
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateStoreOperationLog>>,
-    pub user_id: Option<i32>,
+    pub user_id: Option<UserId>,
 }
 
 impl StoreServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<i32>) -> Self {
+    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
         let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
         Self {
             http_client,

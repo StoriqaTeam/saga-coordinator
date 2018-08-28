@@ -17,7 +17,8 @@ use errors::Error;
 
 pub fn parse_validation_errors(e: FailureError, errors: &'static [&str]) -> FailureError {
     {
-        let real_err = e.causes()
+        let real_err = e
+            .causes()
             .filter_map(|cause| {
                 if let Some(ctx) = cause.downcast_ref::<Context<Error>>() {
                     Some(ctx.get_context())

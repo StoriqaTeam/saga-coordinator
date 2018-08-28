@@ -32,13 +32,13 @@ pub trait AccountService {
 
 /// Account service, responsible for Creating user
 pub struct AccountServiceImpl {
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateProfileOperationLog>>,
 }
 
 impl AccountServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config) -> Self {
+    pub fn new(http_client: HttpClientHandle, config: config::Config) -> Self {
         let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
         Self { http_client, config, log }
     }
@@ -107,7 +107,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
@@ -136,7 +137,8 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
