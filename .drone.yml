@@ -210,4 +210,4 @@ pipeline:
       environment: production
       status:
       - success
-- failure
+      - failure
