@@ -21,6 +21,7 @@ use stq_http::controller::ControllerFuture;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
 use stq_router::RouteParser;
+use stq_types::UserId;
 
 use self::routes::Route;
 use config::Config;
@@ -32,7 +33,7 @@ use services::store::{StoreService, StoreServiceImpl};
 
 pub struct ControllerImpl {
     pub config: Config,
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub route_parser: Arc<RouteParser<Route>>,
 }
 
@@ -40,7 +41,7 @@ impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         let headers = req.headers().clone();
         let auth_header = headers.get::<Authorization<String>>();
-        let user_id = auth_header.map(|auth| auth.0.clone()).and_then(|id| i32::from_str(&id).ok());
+        let user_id = auth_header.map(|auth| auth.0.clone()).and_then(|id| UserId::from_str(&id).ok());
 
         let http_client = self.http_client.clone();
         let config = self.config.clone();

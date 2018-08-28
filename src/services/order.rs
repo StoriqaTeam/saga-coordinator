@@ -14,8 +14,9 @@ use serde_json;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_static_resources::{EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore,
-                           OrderUpdateStateForUser};
+use stq_static_resources::{
+    EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
+};
 use stq_types::{SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
@@ -31,14 +32,14 @@ pub trait OrderService {
 
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
-    pub http_client: Arc<HttpClientHandle>,
+    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
-    pub user_id: Option<i32>,
+    pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
-    pub fn new(http_client: Arc<HttpClientHandle>, config: config::Config, user_id: Option<i32>) -> Self {
+    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
             http_client,

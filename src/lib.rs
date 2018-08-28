@@ -32,7 +32,6 @@ mod services;
 use std::process;
 use std::sync::Arc;
 
-use stq_http::client::Client as HttpClient;
 use stq_http::controller::Application;
 
 use futures::future;
@@ -54,14 +53,8 @@ pub fn start_server(config: config::Config) {
     let mut core = Core::new().expect("Unexpected error creating event loop core");
     let handle = Arc::new(core.handle());
 
-    let client = HttpClient::new(
-        &stq_http::client::Config {
-            http_client_retries: 3,
-            http_client_buffer_size: 10,
-        },
-        &(*handle).clone(),
-    );
-    let client_handle = Arc::new(client.handle());
+    let client = stq_http::client::Client::new(&config.to_http_config(), &handle);
+    let client_handle = client.handle();
     let client_stream = client.stream();
     handle.spawn(client_stream.for_each(|_| Ok(())));
 

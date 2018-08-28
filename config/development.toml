@@ -20,6 +20,9 @@ url="http://warehouses:8000"
 [notifications_microservice]
 url="http://notifications:8000"
 
+[delivery_microservice]
+url="http://delivery:8000"
+
 [graylog]
 addr = "udplog.stq.cloud:32303"
 
@@ -29,3 +32,8 @@ url = "http://nightly.stq.cloud"
 [notification_urls]
 verify_email_path = "https://localhost/verify_email"
 reset_password_path = "https://localhost/password_reset"
+
+[client]
+http_client_buffer_size=10
+http_client_retries=3
+http_timeout_ms=15000
