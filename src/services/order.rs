@@ -11,16 +11,16 @@ use hyper::Headers;
 use hyper::Method;
 use serde_json;
 
-use stq_api::orders::Order;
-use stq_api::orders::OrderClient;
+use stq_api::orders::{Order, OrderClient};
 use stq_api::rpc_client::RestApiClient;
+use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{OrderSlug, SagaId, StoreId, UserId};
+use stq_types::{OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -405,12 +405,21 @@ impl OrderServiceImpl {
 
     // Contains happy path for Order creation
     fn update_orders_happy(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, ()> {
-        Box::new(self.update_orders(orders_info).and_then(move |(s, orders)| {
-            s.notify(&orders).then(|res| match res {
-                Ok((s, _)) => Ok((s, ())),
-                Err((s, _)) => Ok((s, ())),
-            })
-        }))
+        Box::new(
+            self.update_orders(orders_info)
+                .and_then(move |(s, orders)| {
+                    s.update_warehouse(&orders).then(|res| match res {
+                        Ok((s, _)) => Ok((s, orders)),
+                        Err((s, _)) => Ok((s, orders)),
+                    })
+                })
+                .and_then(move |(s, orders)| {
+                    s.notify(&orders).then(|res| match res {
+                        Ok((s, _)) => Ok((s, ())),
+                        Err((s, _)) => Ok((s, ())),
+                    })
+                }),
+        )
     }
 
     fn update_orders(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, Vec<Option<Order>>> {
@@ -469,6 +478,45 @@ impl OrderServiceImpl {
                     }
                 });
             orders_futures.push(Box::new(res) as Box<Future<Item = Option<Order>, Error = FailureError>>);
+        }
+
+        Box::new(join_all(orders_futures).then(|res| match res {
+            Ok(orders) => Ok((self, orders)),
+            Err(e) => Err((self, e)),
+        }))
+    }
+
+    fn update_warehouse(self, orders: &[Option<Order>]) -> ServiceFuture<Self, Vec<()>> {
+        debug!("Updating warehouses stock: {:?}", orders);
+
+        let warehouses_url = self.config.service_url(StqService::Warehouses);
+        let mut orders_futures = vec![];
+        for order in orders {
+            if let Some(order) = order {
+                match &order.state {
+                    OrderState::Paid => {}
+                    _ => continue,
+                }
+                let rpc_client = RestApiClient::new(&warehouses_url, self.user_id);
+                let res = rpc_client
+                    .find_by_product_id(order.product)
+                    .and_then(move |stocks| {
+                        for stock in stocks {
+                            if stock.quantity.0 > 0 {
+                                let new_quantity = stock.quantity.0 - 1;
+                                rpc_client.set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity));
+                            }
+                        }
+                        Ok(())
+                    })
+                    .map_err(|e| {
+                        e.context("decrementing quantity in warehouses microservice failed.")
+                            .context(Error::RpcClient)
+                            .into()
+                    });
+
+                orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
+            }
         }
 
         Box::new(join_all(orders_futures).then(|res| match res {
