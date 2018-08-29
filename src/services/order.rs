@@ -11,13 +11,15 @@ use hyper::Method;
 
 use serde_json;
 
+use stq_api::rpc_client::RestApiClient;
+use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{SagaId, StoreId, UserId};
+use stq_types::{OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -239,8 +241,8 @@ impl OrderServiceImpl {
     fn notify_user_update_order(
         &self,
         user_id: UserId,
-        order_slug: i32,
-        order_state: String,
+        order_slug: OrderSlug,
+        order_state: OrderState,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
@@ -264,7 +266,7 @@ impl OrderServiceImpl {
                         let email = OrderUpdateStateForUser {
                             user,
                             order_slug: order_slug.to_string(),
-                            order_state,
+                            order_state: order_state.to_string(),
                             cluster_url,
                         };
                         let url = format!("{}/users/order-update-state", notifications_url);
@@ -294,8 +296,8 @@ impl OrderServiceImpl {
     fn notify_store_update_order(
         &self,
         store_id: StoreId,
-        order_slug: i32,
-        order_state: String,
+        order_slug: OrderSlug,
+        order_state: OrderState,
     ) -> Box<Future<Item = (), Error = FailureError>> {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
@@ -316,7 +318,7 @@ impl OrderServiceImpl {
                                 store_email,
                                 store_id: store.id.to_string(),
                                 order_slug: order_slug.to_string(),
-                                order_state,
+                                order_state: order_state.to_string(),
                                 cluster_url,
                             };
                             let url = format!("{}/stores/order-update-state", notifications_url);
@@ -346,31 +348,34 @@ impl OrderServiceImpl {
         Box::new(send_to_store)
     }
 
-    fn notify_on_create(self, orders: &[Order]) -> ServiceFuture<Self, ()> {
-        let mut orders_futures = vec![];
-        for order in orders {
-            let send_to_client = self.notify_user_create_order(order.customer_id, order.slug);
-            let send_to_store = self.notify_store_create_order(order.store_id, order.slug);
-            let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
-            orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
-        }
-
-        Box::new(
-            join_all(orders_futures)
-                .map_err(|e: FailureError| e.context("Notifying on create orders error.".to_string()).into())
-                .then(|res| match res {
-                    Ok(_) => Ok((self, ())),
-                    Err(e) => Err((self, e)),
-                }),
-        )
-    }
-
-    fn notify_on_update(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
+    fn notify(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
         let mut orders_futures = vec![];
         for order in orders {
             if let Some(order) = order {
-                let send_to_client = self.notify_user_update_order(order.customer_id, order.slug, order.state.to_string());
-                let send_to_store = self.notify_store_update_order(order.store_id, order.slug, order.state.to_string());
+                let send_to_client = match order.state {
+                    OrderState::New => self.notify_user_create_order(order.customer_id, order.slug),
+                    OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => Box::new(future::ok(())),
+                    OrderState::Paid
+                    | OrderState::InProcessing
+                    | OrderState::Cancelled
+                    | OrderState::Sent
+                    | OrderState::Delivered
+                    | OrderState::Received
+                    | OrderState::Complete => self.notify_user_update_order(order.customer_id, OrderSlug(order.slug), order.state),
+                };
+                let send_to_store = match order.state {
+                    OrderState::New | OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => {
+                        Box::new(future::ok(()))
+                    }
+                    OrderState::Paid => self.notify_store_create_order(order.store_id, order.slug),
+                    OrderState::InProcessing
+                    | OrderState::Cancelled
+                    | OrderState::Sent
+                    | OrderState::Delivered
+                    | OrderState::Received
+                    | OrderState::Complete => self.notify_store_update_order(order.store_id, OrderSlug(order.slug), order.state),
+                };
+
                 let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
                 orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
             }
@@ -397,22 +402,32 @@ impl OrderServiceImpl {
                 saga_id: SagaId::new(),
             };
             s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
-                s.notify_on_create(&orders).then(|res| match res {
-                    Ok((s, _)) => Ok((s, invoice)),
-                    Err((s, _)) => Ok((s, invoice)),
-                })
+                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                    .then(|res| match res {
+                        Ok((s, _)) => Ok((s, invoice)),
+                        Err((s, _)) => Ok((s, invoice)),
+                    })
             })
         }))
     }
 
     // Contains happy path for Order creation
     fn update_orders_happy(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, ()> {
-        Box::new(self.update_orders(orders_info).and_then(move |(s, orders)| {
-            s.notify_on_update(&orders).then(|res| match res {
-                Ok((s, _)) => Ok((s, ())),
-                Err((s, _)) => Ok((s, ())),
-            })
-        }))
+        Box::new(
+            self.update_orders(orders_info)
+                .and_then(move |(s, orders)| {
+                    s.update_warehouse(&orders).then(|res| match res {
+                        Ok((s, _)) => Ok((s, orders)),
+                        Err((s, _)) => Ok((s, orders)),
+                    })
+                })
+                .and_then(move |(s, orders)| {
+                    s.notify(&orders).then(|res| match res {
+                        Ok((s, _)) => Ok((s, ())),
+                        Err((s, _)) => Ok((s, ())),
+                    })
+                }),
+        )
     }
 
     fn update_orders(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, Vec<Option<Order>>> {
@@ -471,6 +486,41 @@ impl OrderServiceImpl {
                     }
                 });
             orders_futures.push(Box::new(res) as Box<Future<Item = Option<Order>, Error = FailureError>>);
+        }
+
+        Box::new(join_all(orders_futures).then(|res| match res {
+            Ok(orders) => Ok((self, orders)),
+            Err(e) => Err((self, e)),
+        }))
+    }
+
+    fn update_warehouse(self, orders: &[Option<Order>]) -> ServiceFuture<Self, Vec<()>> {
+        debug!("Updating warehouses stock: {:?}", orders);
+
+        let warehouses_url = self.config.service_url(StqService::Warehouses);
+        let mut orders_futures = vec![];
+        for order in orders {
+            if let Some(order) = order {
+                match &order.state {
+                    OrderState::Paid => {}
+                    _ => continue,
+                }
+                let rpc_client = RestApiClient::new(&warehouses_url, self.user_id);
+                let res = rpc_client
+                    .find_by_product_id(order.product_id)
+                    .and_then(move |stocks| {
+                        for stock in stocks {
+                            if stock.quantity.0 > 0 {
+                                let new_quantity = stock.quantity.0 - 1;
+                                rpc_client.set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity));
+                            }
+                        }
+                        Ok(())
+                    })
+                    .map_err(|_e| format_err!("decrementing quantity in warehouses microservice failed.").into());
+
+                orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
+            }
         }
 
         Box::new(join_all(orders_futures).then(|res| match res {

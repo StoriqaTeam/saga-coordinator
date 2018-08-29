@@ -30,6 +30,7 @@ stq_http = { path = "vendor/libstqbackend/http" }
 stq_static_resources = { path = "vendor/libstqbackend/static_resources" }
 stq_types = { path = "vendor/libstqbackend/types" }
 stq_logging = { path = "vendor/libstqbackend/logging" }
+stq_api = { path = "vendor/libstqbackend/api" }
 tokio-core = "0.1"
 uuid = { version = "*", features = ["use_std", "v4", "serde"] }
 validator = "0.6.3"
