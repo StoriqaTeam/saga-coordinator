@@ -11,6 +11,7 @@ use hyper::Method;
 use serde_json;
 
 use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::request_util::Currency as CurrencyHeader;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::*;
@@ -138,13 +139,15 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
 
+        let mut headers = Headers::new();
+        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
         let res = self
             .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
                 None,
-                None,
+                Some(headers),
             )
             .inspect(move |_| {
                 log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetComplete(user_id));
@@ -406,12 +409,14 @@ impl AccountServiceImpl {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
+                        let mut headers = Headers::new();
+                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
                         s.http_client
                             .request::<StqUserRole>(
                                 Method::Delete,
                                 format!("{}/{}/{}", s.config.service_url(StqService::Stores), "roles/default", user_id,),
                                 None,
-                                None,
+                                Some(headers),
                             )
                             .then(|res| match res {
                                 Ok(_) => Ok((s, ())),
