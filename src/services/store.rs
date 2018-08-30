@@ -11,6 +11,7 @@ use hyper::Method;
 use serde_json;
 
 use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::request_util::Currency as CurrencyHeader;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_types::{MerchantId, RoleEntryId, StoreId, StoresRole, UserId};
@@ -57,6 +58,7 @@ impl StoreServiceImpl {
         if let Some(ref user_id) = self.user_id {
             headers.set(Authorization(user_id.to_string()));
         };
+        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
 
         let client = self.http_client.clone();
         let stores_url = self.config.service_url(StqService::Stores);
@@ -391,7 +393,7 @@ impl StoreServiceImpl {
                         if let Some(ref user_id) = s.user_id {
                             headers.set(Authorization(user_id.to_string()));
                         };
-
+                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
                         s.http_client
                             .request::<Option<Store>>(
                                 Method::Delete,
