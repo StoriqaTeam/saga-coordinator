@@ -162,7 +162,13 @@ impl OrderServiceImpl {
                             serde_json::to_string(&email)
                                 .map_err(From::from)
                                 .into_future()
-                                .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                                .and_then(move |body| {
+                                    let mut headers = Headers::new();
+                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                                    client
+                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
+                                        .map_err(From::from)
+                                }),
                         ) as Box<Future<Item = (), Error = FailureError>>
                     } else {
                         error!(
@@ -208,7 +214,13 @@ impl OrderServiceImpl {
                                 serde_json::to_string(&email)
                                     .map_err(From::from)
                                     .into_future()
-                                    .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                                    .and_then(move |body| {
+                                        let mut headers = Headers::new();
+                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                                        client
+                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
+                                            .map_err(From::from)
+                                    }),
                             ) as Box<Future<Item = (), Error = FailureError>>
                         } else {
                             Box::new(future::ok(()))
@@ -266,7 +278,13 @@ impl OrderServiceImpl {
                             serde_json::to_string(&email)
                                 .map_err(From::from)
                                 .into_future()
-                                .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                                .and_then(move |body| {
+                                    let mut headers = Headers::new();
+                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                                    client
+                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
+                                        .map_err(From::from)
+                                }),
                         ) as Box<Future<Item = (), Error = FailureError>>
                     } else {
                         error!(
@@ -318,7 +336,13 @@ impl OrderServiceImpl {
                                 serde_json::to_string(&email)
                                     .map_err(From::from)
                                     .into_future()
-                                    .and_then(move |body| client.request::<()>(Method::Post, url, Some(body), None).map_err(From::from)),
+                                    .and_then(move |body| {
+                                        let mut headers = Headers::new();
+                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                                        client
+                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
+                                            .map_err(From::from)
+                                    }),
                             ) as Box<Future<Item = (), Error = FailureError>>
                         } else {
                             Box::new(future::ok(()))

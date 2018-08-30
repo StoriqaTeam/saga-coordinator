@@ -354,7 +354,9 @@ impl AccountServiceImpl {
                         .map_err(From::from)
                         .into_future()
                         .and_then(move |body| {
-                            client.request::<()>(Method::Post, url, Some(body), None).map_err(|e| {
+                            let mut headers = Headers::new();
+                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                            client.request::<()>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
                                 e.context("Sending email to notifications microservice failed.")
                                     .context(Error::HttpClient)
                                     .into()
@@ -621,8 +623,10 @@ impl AccountService for AccountServiceImpl {
                                         .map_err(From::from)
                                         .into_future()
                                         .and_then(move |body| {
+                                            let mut headers = Headers::new();
+                                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
                                             client
-                                                .request::<()>(Method::Post, url, Some(body), None)
+                                                .request::<()>(Method::Post, url, Some(body), Some(headers))
                                                 .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                         })
                                 }
@@ -690,8 +694,10 @@ impl AccountService for AccountServiceImpl {
                                     .map_err(From::from)
                                     .into_future()
                                     .and_then(move |body| {
+                                        let mut headers = Headers::new();
+                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
                                         client
-                                            .request::<()>(Method::Post, url, Some(body), None)
+                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
                                             .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                     }),
                             )
@@ -762,8 +768,10 @@ impl AccountService for AccountServiceImpl {
                                         .map_err(From::from)
                                         .into_future()
                                         .and_then(move |body| {
+                                            let mut headers = Headers::new();
+                                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
                                             client
-                                                .request::<()>(Method::Post, url, Some(body), None)
+                                                .request::<()>(Method::Post, url, Some(body), Some(headers))
                                                 .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                                         })
                                 }
@@ -832,8 +840,10 @@ impl AccountService for AccountServiceImpl {
                                     .map_err(From::from)
                                     .into_future()
                                     .and_then(move |body| {
+                                        let mut headers = Headers::new();
+                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
                                         client
-                                            .request::<()>(Method::Post, url, Some(body), None)
+                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
                                             .map_err(|e| e.context("Sending notification failed.").into())
                                     }),
                             )
