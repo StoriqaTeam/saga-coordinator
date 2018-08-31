@@ -15,6 +15,7 @@ use stq_api::orders::{Order, OrderClient};
 use stq_api::rpc_client::RestApiClient;
 use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::request_util::Currency as CurrencyHeader;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
@@ -193,8 +194,10 @@ impl OrderServiceImpl {
         let stores_url = self.config.service_url(StqService::Stores);
         let cluster_url = self.config.cluster.url.clone();
         let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
+        let mut headers = Headers::new();
+        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
         let send_to_store = client
-            .request::<Option<Store>>(Method::Get, url, None, None)
+            .request::<Option<Store>>(Method::Get, url, None, Some(headers))
             .map_err(From::from)
             .and_then({
                 let client = client.clone();
@@ -314,8 +317,10 @@ impl OrderServiceImpl {
         let stores_url = self.config.service_url(StqService::Stores);
         let cluster_url = self.config.cluster.url.clone();
         let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
+        let mut headers = Headers::new();
+        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
         let send_to_store = client
-            .request::<Option<Store>>(Method::Get, url, None, None)
+            .request::<Option<Store>>(Method::Get, url, None, Some(headers))
             .map_err(From::from)
             .and_then({
                 let client = client.clone();
@@ -521,7 +526,7 @@ impl OrderServiceImpl {
                     OrderState::Paid => {}
                     _ => continue,
                 }
-                let rpc_client = RestApiClient::new(&warehouses_url, self.user_id);
+                let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
                 let res = rpc_client
                     .find_by_product_id(order.product)
                     .and_then(move |stocks| {
