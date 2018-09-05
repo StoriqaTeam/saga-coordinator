@@ -574,6 +574,7 @@ impl AccountService for AccountServiceImpl {
                 .map_err(|(s, e): (Box<AccountService>, FailureError)| (s, parse_validation_errors(e, &["email", "password"]))),
         )
     }
+
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
@@ -639,8 +640,9 @@ impl AccountService for AccountServiceImpl {
                             }),
                     )
                 } else {
-                    Box::new(future::err(format_err!("User not found.").context(Error::NotFound).into()))
-                        as Box<Future<Item = (), Error = FailureError>>
+                    Box::new(future::err(
+                        Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                    )) as Box<Future<Item = (), Error = FailureError>>
                 }
             })
             .then(|res| match res {
@@ -650,6 +652,7 @@ impl AccountService for AccountServiceImpl {
 
         Box::new(res)
     }
+
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
@@ -708,8 +711,9 @@ impl AccountService for AccountServiceImpl {
                                     }),
                             )
                         } else {
-                            Box::new(future::err(format_err!("User not found.").context(Error::NotFound).into()))
-                                as Box<Future<Item = (), Error = FailureError>>
+                            Box::new(future::err(
+                                Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                            )) as Box<Future<Item = (), Error = FailureError>>
                         }
                     }
                 })
@@ -719,6 +723,7 @@ impl AccountService for AccountServiceImpl {
                 }),
         )
     }
+
     fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
@@ -784,8 +789,9 @@ impl AccountService for AccountServiceImpl {
                             }),
                     )
                 } else {
-                    Box::new(future::err(format_err!("User not found.").context(Error::NotFound).into()))
-                        as Box<Future<Item = (), Error = FailureError>>
+                    Box::new(future::err(
+                        Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                    )) as Box<Future<Item = (), Error = FailureError>>
                 }
             })
             .then(|res| match res {
@@ -795,6 +801,7 @@ impl AccountService for AccountServiceImpl {
 
         Box::new(res)
     }
+
     fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
@@ -854,8 +861,9 @@ impl AccountService for AccountServiceImpl {
                                     }),
                             )
                         } else {
-                            Box::new(future::err(format_err!("User not found.").context(Error::NotFound).into()))
-                                as Box<Future<Item = (), Error = FailureError>>
+                            Box::new(future::err(
+                                Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                            )) as Box<Future<Item = (), Error = FailureError>>
                         }
                     }
                 })
