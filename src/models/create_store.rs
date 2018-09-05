@@ -105,7 +105,7 @@ pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CreateStoreOperationStage {
     StoreCreationStart(UserId),
-    StoreCreationComplete(UserId),
+    StoreCreationComplete(StoreId),
     WarehousesRoleSetStart(RoleEntryId),
     WarehousesRoleSetComplete(RoleEntryId),
     OrdersRoleSetStart(RoleEntryId),

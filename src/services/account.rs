@@ -90,10 +90,11 @@ impl AccountServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -117,8 +118,9 @@ impl AccountServiceImpl {
                 None,
                 None,
             )
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetComplete(user_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -149,8 +151,9 @@ impl AccountServiceImpl {
                 None,
                 Some(headers),
             )
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetComplete(user_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(role) => Ok((self, role)),
@@ -205,10 +208,11 @@ impl AccountServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
@@ -258,10 +262,11 @@ impl AccountServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::DeliveryRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
@@ -299,10 +304,11 @@ impl AccountServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
@@ -404,7 +410,7 @@ impl AccountServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log {
             match e {
-                CreateProfileOperationStage::StoreRoleSetStart(user_id) => {
+                CreateProfileOperationStage::StoreRoleSetComplete(user_id) => {
                     debug!("Reverting users role, user_id: {}", user_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -432,7 +438,7 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                CreateProfileOperationStage::AccountCreationStart(saga_id) => {
+                CreateProfileOperationStage::AccountCreationComplete(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -458,7 +464,7 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                CreateProfileOperationStage::BillingRoleSetStart(role_id) => {
+                CreateProfileOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -487,7 +493,7 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                CreateProfileOperationStage::DeliveryRoleSetStart(role_id) => {
+                CreateProfileOperationStage::DeliveryRoleSetComplete(role_id) => {
                     debug!("Reverting delivery role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -516,7 +522,7 @@ impl AccountServiceImpl {
                     }));
                 }
 
-                CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
+                CreateProfileOperationStage::BillingCreateMerchantComplete(user_id) => {
                     debug!("Reverting merchant, user_id: {}", user_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
