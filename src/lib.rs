@@ -24,6 +24,8 @@ extern crate stq_routes;
 extern crate stq_static_resources;
 extern crate stq_types;
 
+#[macro_use]
+mod macros;
 pub mod config;
 mod controller;
 mod errors;
