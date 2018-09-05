@@ -79,10 +79,11 @@ impl OrderServiceImpl {
                     .context(Error::RpcClient)
                     .into()
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
@@ -120,10 +121,11 @@ impl OrderServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(user) => Ok((self, user)),
@@ -561,7 +563,7 @@ impl OrderServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log {
             match e {
-                CreateOrderOperationStage::OrdersConvertCartStart(conversion_id) => {
+                CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
                     debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -598,7 +600,7 @@ impl OrderServiceImpl {
                     }));
                 }
 
-                CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id) => {
+                CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
                     debug!("Reverting create invoice, saga_id: {}", saga_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {

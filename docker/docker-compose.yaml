@@ -10,7 +10,7 @@ services:
     command: cargo run
     volumes:
       - ..:/app
-      - saga_cargo_cache:/usr/local/cargo
+      - stq_cargo_cache:/usr/local/cargo
     environment:
       - STQ_USERS_ADDR=http://users:8000
       - STQ_STORES_ADDR=http://stores:8001
@@ -20,7 +20,7 @@ services:
     stdin_open: true
 
 volumes:
-  saga_cargo_cache:
+  stq_cargo_cache:
 
 networks:
   default:

@@ -80,8 +80,9 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
-                log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(user_id));
+            .and_then(move |store| {
+                log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
+                Ok(store)
             })
             .then(|res| match res {
                 Ok(store) => Ok((self, store)),
@@ -134,10 +135,11 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(warehouse_role) => Ok((self, warehouse_role)),
@@ -188,10 +190,11 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(orders_role) => Ok((self, orders_role)),
@@ -241,10 +244,11 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
@@ -294,10 +298,11 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::DeliveryRoleSetComplete(new_role_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
@@ -334,10 +339,11 @@ impl StoreServiceImpl {
                             .into()
                     })
             })
-            .inspect(move |_| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
+                Ok(res)
             })
             .then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
@@ -382,26 +388,24 @@ impl StoreServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log {
             match e {
-                CreateStoreOperationStage::StoreCreationStart(user_id) => {
-                    debug!("Reverting store, user_id: {}", user_id);
+                CreateStoreOperationStage::StoreCreationComplete(store_id) => {
+                    debug!("Reverting store, store_id: {}", store_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
                             Ok((s, _)) => s,
                             Err((s, _)) => s,
                         };
                         let mut headers = Headers::new();
-                        if let Some(ref user_id) = s.user_id {
-                            headers.set(Authorization(user_id.to_string()));
-                        };
+                        headers.set(Authorization("1".to_string())); // reverting store with superuser credentials
                         headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
                         s.http_client
-                            .request::<Option<Store>>(
+                            .request::<Store>(
                                 Method::Delete,
                                 format!(
-                                    "{}/{}/by_user_id/{}",
+                                    "{}/{}/{}",
                                     s.config.service_url(StqService::Stores),
                                     StqModel::Store.to_url(),
-                                    user_id,
+                                    store_id,
                                 ),
                                 None,
                                 Some(headers),
@@ -418,7 +422,7 @@ impl StoreServiceImpl {
                     }));
                 }
 
-                CreateStoreOperationStage::WarehousesRoleSetStart(role_id) => {
+                CreateStoreOperationStage::WarehousesRoleSetComplete(role_id) => {
                     debug!("Reverting warehouses role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -447,7 +451,7 @@ impl StoreServiceImpl {
                     }));
                 }
 
-                CreateStoreOperationStage::OrdersRoleSetStart(role_id) => {
+                CreateStoreOperationStage::OrdersRoleSetComplete(role_id) => {
                     debug!("Reverting orders role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -476,7 +480,7 @@ impl StoreServiceImpl {
                     }));
                 }
 
-                CreateStoreOperationStage::BillingRoleSetStart(role_id) => {
+                CreateStoreOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -505,7 +509,7 @@ impl StoreServiceImpl {
                     }));
                 }
 
-                CreateStoreOperationStage::DeliveryRoleSetStart(role_id) => {
+                CreateStoreOperationStage::DeliveryRoleSetComplete(role_id) => {
                     debug!("Reverting delivery role, user_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
@@ -534,7 +538,7 @@ impl StoreServiceImpl {
                     }));
                 }
 
-                CreateStoreOperationStage::BillingCreateMerchantStart(store_id) => {
+                CreateStoreOperationStage::BillingCreateMerchantComplete(store_id) => {
                     debug!("Reverting merchant, store_id: {}", store_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
