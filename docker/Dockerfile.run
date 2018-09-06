@@ -1,22 +1,25 @@
 FROM debian:stable-slim
 
-RUN mkdir -p /app/config
-
+# Install deps, add user and cleanup
 RUN apt-get update \
-    && apt-get install -y ca-certificates \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/
+  && apt-get install -y wget gnupg2 \
+  && wget -q https://www.postgresql.org/media/keys/ACCC4CF8.asc -O - | apt-key add - \
+  && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ stretch-pgdg main" >> /etc/apt/sources.list.d/pgdg.list' \
+  && apt-get update \
+  && apt-get install -y libpq5 libmariadbclient18 \
+  && apt-get purge -y wget \
+  && apt-get autoremove -y \
+  && apt-get clean -y \
+  && rm -rf /var/lib/apt/lists/ \
+  && mkdir -p /app/config \
+  && adduser --disabled-password --gecos "" --home /app --no-create-home -u 5000 app
 
 COPY target/release/saga_coordinator_runner /app
 COPY config /app/config
-
-# Running as user "app"
-RUN adduser --disabled-password --gecos "" --home /app --no-create-home -u 5000 app \
-  && chown -R app: /app
+RUN chown -R app: /app
 
 USER app
 WORKDIR /app
-EXPOSE 8004
+EXPOSE 8000
 
 ENTRYPOINT ["/app/saga_coordinator_runner"]
