@@ -141,7 +141,9 @@ impl OrderServiceImpl {
         Box::new(res)
     }
 
-    fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> Box<Future<Item = (), Error = FailureError>> {
+    fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> 
+    impl Future<Item = (), Error = FailureError>
+    {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
@@ -167,7 +169,7 @@ impl OrderServiceImpl {
                             cluster_url,
                         };
                         let url = format!("{}/users/order-create", notifications_url);
-                        Box::new(
+                        Either::A(
                             serde_json::to_string(&email)
                                 .map_err(From::from)
                                 .into_future()
@@ -178,13 +180,13 @@ impl OrderServiceImpl {
                                         .request::<()>(Method::Post, url, Some(body), Some(headers))
                                         .map_err(From::from)
                                 }),
-                        ) as Box<Future<Item = (), Error = FailureError>>
+                        ) 
                     } else {
                         error!(
                             "Sending notification to user can not be done. User with id: {} is not found.",
                             user_id
                         );
-                        Box::new(future::err(
+                        Either::B(future::err(
                             format_err!("User is not found in users microservice.")
                                 .context(Error::NotFound)
                                 .into(),
@@ -193,10 +195,12 @@ impl OrderServiceImpl {
                 }
             });
 
-        Box::new(send_to_client)
+        send_to_client
     }
 
-    fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> Box<Future<Item = (), Error = FailureError>> {
+    fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> 
+    impl Future<Item = (), Error = FailureError>
+    {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let stores_url = self.config.service_url(StqService::Stores);
@@ -213,6 +217,7 @@ impl OrderServiceImpl {
                 let cluster_url = cluster_url.clone();
                 move |store| {
                     if let Some(store) = store {
+                            Either::A(
                         if let Some(store_email) = store.email {
                             let email = OrderCreateForStore {
                                 store_email,
@@ -221,7 +226,7 @@ impl OrderServiceImpl {
                                 cluster_url,
                             };
                             let url = format!("{}/stores/order-create", notifications_url);
-                            Box::new(
+                            Either::A(
                                 serde_json::to_string(&email)
                                     .map_err(From::from)
                                     .into_future()
@@ -232,16 +237,16 @@ impl OrderServiceImpl {
                                             .request::<()>(Method::Post, url, Some(body), Some(headers))
                                             .map_err(From::from)
                                     }),
-                            ) as Box<Future<Item = (), Error = FailureError>>
+                            ) 
                         } else {
-                            Box::new(future::ok(()))
-                        }
+                            Either::B(future::ok(()))
+                        })
                     } else {
                         error!(
                             "Sending notification to store can not be done. Store with id: {} is not found.",
                             store_id
                         );
-                        Box::new(future::err(
+                        Either::B(future::err(
                             format_err!("Store is not found in stores microservice.")
                                 .context(Error::NotFound)
                                 .into(),
@@ -250,7 +255,7 @@ impl OrderServiceImpl {
                 }
             });
 
-        Box::new(send_to_store)
+        send_to_store
     }
 
     fn notify_user_update_order(
@@ -258,7 +263,9 @@ impl OrderServiceImpl {
         user_id: UserId,
         order_slug: OrderSlug,
         order_state: OrderState,
-    ) -> Box<Future<Item = (), Error = FailureError>> {
+    ) -> 
+    impl Future<Item = (), Error = FailureError>
+     {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
@@ -285,7 +292,7 @@ impl OrderServiceImpl {
                             cluster_url,
                         };
                         let url = format!("{}/users/order-update-state", notifications_url);
-                        Box::new(
+                        Either::A(
                             serde_json::to_string(&email)
                                 .map_err(From::from)
                                 .into_future()
@@ -296,13 +303,13 @@ impl OrderServiceImpl {
                                         .request::<()>(Method::Post, url, Some(body), Some(headers))
                                         .map_err(From::from)
                                 }),
-                        ) as Box<Future<Item = (), Error = FailureError>>
+                        )
                     } else {
                         error!(
                             "Sending notification to user can not be done. User with id: {} is not found.",
                             user_id
                         );
-                        Box::new(future::err(
+                        Either::B(future::err(
                             format_err!("User is not found in users microservice.")
                                 .context(Error::NotFound)
                                 .into(),
@@ -311,7 +318,7 @@ impl OrderServiceImpl {
                 }
             });
 
-        Box::new(send_to_client)
+        send_to_client
     }
 
     fn notify_store_update_order(
@@ -319,7 +326,9 @@ impl OrderServiceImpl {
         store_id: StoreId,
         order_slug: OrderSlug,
         order_state: OrderState,
-    ) -> Box<Future<Item = (), Error = FailureError>> {
+    ) -> 
+    impl Future<Item = (), Error = FailureError>
+    {
         let client = self.http_client.clone();
         let notifications_url = self.config.service_url(StqService::Notifications);
         let stores_url = self.config.service_url(StqService::Stores);
@@ -336,6 +345,8 @@ impl OrderServiceImpl {
                 let cluster_url = cluster_url.clone();
                 move |store| {
                     if let Some(store) = store {
+                            Either::A(
+
                         if let Some(store_email) = store.email {
                             let email = OrderUpdateStateForStore {
                                 store_email,
@@ -345,7 +356,7 @@ impl OrderServiceImpl {
                                 cluster_url,
                             };
                             let url = format!("{}/stores/order-update-state", notifications_url);
-                            Box::new(
+                            Either::A(
                                 serde_json::to_string(&email)
                                     .map_err(From::from)
                                     .into_future()
@@ -356,16 +367,18 @@ impl OrderServiceImpl {
                                             .request::<()>(Method::Post, url, Some(body), Some(headers))
                                             .map_err(From::from)
                                     }),
-                            ) as Box<Future<Item = (), Error = FailureError>>
+                            )
                         } else {
-                            Box::new(future::ok(()))
+                            Either::B(future::ok(()))
                         }
+                            )
                     } else {
                         error!(
                             "Sending notification to store can not be done. Store with id: {} is not found.",
                             store_id
                         );
-                        Box::new(future::err(
+                            Either::B(
+                        future::err(
                             format_err!("Store is not found in stores microservice.")
                                 .context(Error::NotFound)
                                 .into(),
@@ -374,55 +387,57 @@ impl OrderServiceImpl {
                 }
             });
 
-        Box::new(send_to_store)
+        send_to_store
     }
 
-    fn notify(self, orders: &[Option<Order>]) -> ServiceFuture<Self, ()> {
+    fn notify(self, orders: &[Option<Order>]) -> 
+    impl Future<Item = (Self, ()), Error = (Self, FailureError)>
+     {
         let mut orders_futures = vec![];
         for order in orders {
             if let Some(order) = order {
                 let send_to_client = match order.state {
-                    OrderState::New => self.notify_user_create_order(order.customer, order.slug),
-                    OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => Box::new(future::ok(())),
+                    OrderState::New => Box::new(self.notify_user_create_order(order.customer, order.slug)) as Box<Future<Item = (), Error = FailureError>>,
+                    OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => Box::new(future::ok(())) as Box<Future<Item = (), Error = FailureError>>,
                     OrderState::Paid
                     | OrderState::InProcessing
                     | OrderState::Cancelled
                     | OrderState::Sent
                     | OrderState::Delivered
                     | OrderState::Received
-                    | OrderState::Complete => self.notify_user_update_order(order.customer, order.slug, order.state),
+                    | OrderState::Complete => Box::new(self.notify_user_update_order(order.customer, order.slug, order.state))  as Box<Future<Item = (), Error = FailureError>>,
                 };
                 let send_to_store = match order.state {
                     OrderState::New | OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => {
-                        Box::new(future::ok(()))
+                        Box::new(future::ok(())) as Box<Future<Item = (), Error = FailureError>>
                     }
-                    OrderState::Paid => self.notify_store_create_order(order.store, order.slug),
+                    OrderState::Paid => Box::new(self.notify_store_create_order(order.store, order.slug)) as Box<Future<Item = (), Error = FailureError>>,
                     OrderState::InProcessing
                     | OrderState::Cancelled
                     | OrderState::Sent
                     | OrderState::Delivered
                     | OrderState::Received
-                    | OrderState::Complete => self.notify_store_update_order(order.store, order.slug, order.state),
+                    | OrderState::Complete => Box::new(self.notify_store_update_order(order.store, order.slug, order.state)) as Box<Future<Item = (), Error = FailureError>>,
                 };
 
-                let res = Box::new(send_to_client.then(|_| send_to_store).then(|_| Ok(())));
-                orders_futures.push(Box::new(res) as Box<Future<Item = (), Error = FailureError>>);
+                let res = send_to_client.then(|_| send_to_store).then(|_| Ok(()));
+                orders_futures.push(res);
             }
         }
 
-        Box::new(
             join_all(orders_futures)
                 .map_err(|e: FailureError| e.context("Notifying on update orders error.".to_string()).into())
                 .then(|res| match res {
                     Ok(_) => Ok((self, ())),
                     Err(e) => Err((self, e)),
-                }),
-        )
+                })
     }
 
     // Contains happy path for Order creation
-    fn create_happy(self, input: ConvertCart) -> ServiceFuture<Self, Invoice> {
-        Box::new(self.convert_cart(input.clone()).and_then(move |(s, orders)| {
+    fn create_happy(self, input: ConvertCart) -> 
+    impl Future<Item = (Self, Invoice), Error = (Self, FailureError)>
+    {
+            self.convert_cart(input.clone()).and_then(move |(s, orders)| {
             let orders = orders.clone();
             let create_invoice = CreateInvoice {
                 customer_id: input.customer_id,
@@ -437,12 +452,13 @@ impl OrderServiceImpl {
                         Err((s, _)) => Ok((s, invoice)),
                     })
             })
-        }))
+        })
     }
 
     // Contains happy path for Order creation
-    fn update_orders_happy(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, ()> {
-        Box::new(
+    fn update_orders_happy(self, orders_info: BillingOrdersVec) -> 
+    impl Future<Item = (Self, ()), Error = (Self, FailureError)>
+     {
             self.update_orders(orders_info)
                 .and_then(move |(s, orders)| {
                     s.update_warehouse(&orders).then(|res| match res {
@@ -455,8 +471,7 @@ impl OrderServiceImpl {
                         Ok((s, _)) => Ok((s, ())),
                         Err((s, _)) => Ok((s, ())),
                     })
-                }),
-        )
+                })
     }
 
     // Contains happy path for Order set state
@@ -468,13 +483,13 @@ impl OrderServiceImpl {
         comment: Option<String>,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> 
      {
-            self.set_state(order_slug, order_state, track_id, comment)
-                .and_then(move |(s, order)| {
-                    s.notify(&[order.clone()]).then(|res| match res {
-                        Ok((s, _)) => Ok((s, order)),
-                        Err((s, _)) => Ok((s, order)),
-                    })
+        self.set_state(order_slug, order_state, track_id, comment)
+            .and_then(move |(s, order)| {
+                s.notify(&[order.clone()]).then(|res| match res {
+                    Ok((s, _)) => Ok((s, order)),
+                    Err((s, _)) => Ok((s, order)),
                 })
+            })
     }
 
     fn update_orders(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, Vec<Option<Order>>> {
