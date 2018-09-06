@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 use failure::Error as FailureError;
 use failure::Fail;
 use futures;
-use futures::future;
-use futures::future::join_all;
+use futures::future::{self, join_all, Either};
 use futures::prelude::*;
 use hyper::header::Authorization;
 use hyper::Headers;
@@ -21,7 +20,7 @@ use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{OrderSlug, Quantity, SagaId, StoreId, UserId};
+use stq_types::{OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -31,7 +30,14 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Invoice>;
-    fn update_state(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()>;
+    fn update_state_by_billing(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()>;
+    fn manual_set_state(
+        self,
+        order_slug: OrderSlug,
+        order_state: OrderState,
+        track_id: Option<String>,
+        comment: Option<String>,
+    ) -> ServiceFuture<Box<OrderService>, Option<Order>>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -453,6 +459,24 @@ impl OrderServiceImpl {
         )
     }
 
+    // Contains happy path for Order set state
+    fn set_state_happy(
+        self,
+        order_slug: OrderSlug,
+        order_state: OrderState,
+        track_id: Option<String>,
+        comment: Option<String>,
+    ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> 
+     {
+            self.set_state(order_slug, order_state, track_id, comment)
+                .and_then(move |(s, order)| {
+                    s.notify(&[order.clone()]).then(|res| match res {
+                        Ok((s, _)) => Ok((s, order)),
+                        Err((s, _)) => Ok((s, order)),
+                    })
+                })
+    }
+
     fn update_orders(self, orders_info: BillingOrdersVec) -> ServiceFuture<Self, Vec<Option<Order>>> {
         debug!("Updating orders status: {}", orders_info);
 
@@ -515,6 +539,55 @@ impl OrderServiceImpl {
             Ok(orders) => Ok((self, orders)),
             Err(e) => Err((self, e)),
         }))
+    }
+
+    fn set_state(
+        self,
+        order_slug: OrderSlug,
+        order_state: OrderState,
+        track_id: Option<String>,
+        comment: Option<String>,
+    ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
+        let orders_url = self.config.service_url(StqService::Orders);
+        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
+
+        rpc_client
+            .get_order(OrderIdentifier::Slug(order_slug))
+            .map_err(move |e| {
+                e.context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
+                    .context(Error::RpcClient)
+                    .into()
+            })
+            .and_then(move |order| {
+                if let Some(order) = order {
+                    Either::A(if order.state == order_state {
+                        // if this status already set, do not update
+                        Either::A(future::ok(None))
+                    } else {
+                        Either::B(
+                            rpc_client
+                                .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
+                                .map_err(move |e| {
+                                    e.context(format!(
+                                        "Setting order with slug {} state {} in orders microservice failed.",
+                                        order_slug, order_state
+                                    )).context(Error::RpcClient)
+                                        .into()
+                                }),
+                        )
+                    })
+                } else {
+                    Either::B(future::err(
+                        format_err!("Order is not found in orders microservice! slug: {}", order_slug)
+                            .context(Error::NotFound)
+                            .into(),
+                    ))
+                }
+            })
+            .then(|res| match res {
+                Ok(order) => Ok((self, order)),
+                Err(e) => Err((self, e)),
+            })
     }
 
     fn update_warehouse(self, orders: &[Option<Order>]) -> ServiceFuture<Self, Vec<()>> {
@@ -655,11 +728,29 @@ impl OrderService for OrderServiceImpl {
         )
     }
 
-    fn update_state(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()> {
+    fn update_state_by_billing(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()> {
         debug!("Updating orders status: {}", orders_info);
         Box::new(
             self.update_orders_happy(orders_info)
                 .map(|(s, _)| (Box::new(s) as Box<OrderService>, ()))
+                .or_else(|(s, e)| futures::future::err((Box::new(s) as Box<OrderService>, e))),
+        )
+    }
+
+    fn manual_set_state(
+        self,
+        order_slug: OrderSlug,
+        order_state: OrderState,
+        track_id: Option<String>,
+        comment: Option<String>,
+    ) -> ServiceFuture<Box<OrderService>, Option<Order>> {
+        debug!(
+            "set order {} status '{}' with track {:?} and comment {:?}",
+            order_slug, order_state, track_id, comment
+        );
+        Box::new(
+            self.set_state_happy(order_slug, order_state, track_id, comment)
+                .map(|(s, o)| (Box::new(s) as Box<OrderService>, o))
                 .or_else(|(s, e)| futures::future::err((Box::new(s) as Box<OrderService>, e))),
         )
     }
