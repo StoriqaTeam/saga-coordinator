@@ -1,4 +1,5 @@
 use stq_router::RouteParser;
+use stq_types::OrderSlug;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -10,6 +11,7 @@ pub enum Route {
     CreateStore,
     CreateOrder,
     OrdersUpdateStateByBilling,
+    OrdersManualSetState { order_slug: OrderSlug },
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -30,6 +32,13 @@ pub fn create_route_parser() -> RouteParser<Route> {
     router.add_route(r"^/create_order$", || Route::CreateOrder);
 
     router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);
+
+    router.add_route_with_params(r"^/orders/(\d+)/set_state$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse().ok())
+            .map(|order_slug| Route::OrdersManualSetState { order_slug })
+    });
 
     router
 }

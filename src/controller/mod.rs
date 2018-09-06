@@ -26,7 +26,9 @@ use stq_types::UserId;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use models::{BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile};
+use models::{
+    BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
+};
 use services::account::{AccountService, AccountServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
 use services::store::{StoreService, StoreServiceImpl};
@@ -172,9 +174,27 @@ impl Controller for ControllerImpl {
                     })
                     .and_then(move |orders_info| {
                         order_service
-                            .update_state(orders_info)
+                            .update_state_by_billing(orders_info)
                             .map(|(_, _)| ())
                             .map_err(|(_, e)| FailureError::from(e.context("Error during orders update by external billing occured.")))
+                    }),
+            ),
+
+            (&Method::Post, Some(Route::OrdersManualSetState { order_slug })) => serialize_future(
+                parse_body::<UpdateStatePayload>(req.body())
+                    .map_err(move |e| {
+                        FailureError::from(
+                            e.context(format!(
+                                "Parsing body // POST /orders/{}/set_state in UpdateStatePayload failed!",
+                                order_slug
+                            )).context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |payload| {
+                        order_service
+                            .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment)
+                            .map(|(_, _)| ())
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occured.")))
                     }),
             ),
 
