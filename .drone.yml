@@ -56,6 +56,7 @@ pipeline:
       - push
       - tag
   package:
+    group: package
     image: plugins/docker
     repo: storiqateam/stq-saga
     dockerfile: docker/Dockerfile.run
@@ -169,6 +170,7 @@ pipeline:
 ###
 
   rebuild-cache:
+    group: package
     image: plugins/s3-cache:1
     pull: true
     secrets: [ aws_access_key_id, aws_secret_access_key ]
