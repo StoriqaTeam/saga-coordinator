@@ -25,8 +25,7 @@ pub fn parse_validation_errors(e: FailureError, errors: &'static [&str]) -> Fail
                 } else {
                     cause.downcast_ref::<HttpError>()
                 }
-            })
-            .nth(0);
+            }).nth(0);
         if let Some(HttpError::Api(
             _,
             Some(ErrorMessage {

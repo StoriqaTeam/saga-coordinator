@@ -89,14 +89,12 @@ impl AccountServiceImpl {
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((self, e)),
             });
@@ -117,12 +115,10 @@ impl AccountServiceImpl {
                 format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
                 None,
                 None,
-            )
-            .and_then(move |res| {
+            ).and_then(move |res| {
                 log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetComplete(user_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
@@ -150,12 +146,10 @@ impl AccountServiceImpl {
                 format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
                 None,
                 Some(headers),
-            )
-            .and_then(move |res| {
+            ).and_then(move |res| {
                 log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetComplete(user_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(role) => Ok((self, role)),
                 Err(e) => Err((
                     self,
@@ -201,20 +195,17 @@ impl AccountServiceImpl {
                         format!("{}/{}", billing_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in billing microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
                 Err(e) => Err((self, e)),
             });
@@ -255,20 +246,17 @@ impl AccountServiceImpl {
                         format!("{}/{}", delivery_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in delivery microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::DeliveryRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
                 Err(e) => Err((self, e)),
             });
@@ -303,14 +291,12 @@ impl AccountServiceImpl {
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
@@ -341,8 +327,7 @@ impl AccountServiceImpl {
                             .into()
                     })
                 }
-            })
-            .and_then({
+            }).and_then({
                 let client = self.http_client.clone();
                 move |token| {
                     let user = EmailUser {
@@ -369,8 +354,7 @@ impl AccountServiceImpl {
                             })
                         })
                 }
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
             });
@@ -425,8 +409,7 @@ impl AccountServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Stores), "roles/default", user_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -451,8 +434,7 @@ impl AccountServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Users), "user_by_saga_id", saga_id,),
                                 None,
                                 None,
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -480,8 +462,7 @@ impl AccountServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -509,8 +490,7 @@ impl AccountServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Delivery), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -535,15 +515,14 @@ impl AccountServiceImpl {
                                 format!("{}/merchants/user/{}", s.config.service_url(StqService::Billing), user_id.0,),
                                 None,
                                 None,
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
                                     e.context(format_err!(
                                         "Account service create_revert BillingCreateMerchantStart error occured."
                                     )).context(Error::HttpClient)
-                                        .into(),
+                                    .into(),
                                 )),
                             })
                     }));
@@ -570,8 +549,7 @@ impl AccountService for AccountServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<AccountService>, e))
                     })
-                })
-                .map_err(|(s, e): (Box<AccountService>, FailureError)| (s, parse_validation_errors(e, &["email", "password"]))),
+                }).map_err(|(s, e): (Box<AccountService>, FailureError)| (s, parse_validation_errors(e, &["email", "password"]))),
         )
     }
 
@@ -590,8 +568,7 @@ impl AccountService for AccountServiceImpl {
                 e.context("Receiving user from users microservice failed.")
                     .context(Error::HttpClient)
                     .into()
-            })
-            .and_then(move |user| {
+            }).and_then(move |user| {
                 if let Some(user) = user {
                     let user_id = user.id;
                     let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
@@ -611,8 +588,7 @@ impl AccountService for AccountServiceImpl {
                                             .into()
                                     })
                                 }
-                            })
-                            .and_then({
+                            }).and_then({
                                 let client = client.clone();
                                 move |token| {
                                     let user = EmailUser {
@@ -644,8 +620,7 @@ impl AccountService for AccountServiceImpl {
                         Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
                     )) as Box<Future<Item = (), Error = FailureError>>
                 }
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                 Err(e) => Err((Box::new(self) as Box<AccountService>, parse_validation_errors(e, &["email"]))),
             });
@@ -673,8 +648,7 @@ impl AccountService for AccountServiceImpl {
                                 .into()
                         })
                     }
-                })
-                .and_then({
+                }).and_then({
                     let client = client.clone();
                     move |email| {
                         let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), email);
@@ -686,8 +660,7 @@ impl AccountService for AccountServiceImpl {
                                 .into()
                         })
                     }
-                })
-                .and_then({
+                }).and_then({
                     let client = client.clone();
                     move |user| {
                         if let Some(user) = user {
@@ -716,8 +689,7 @@ impl AccountService for AccountServiceImpl {
                             )) as Box<Future<Item = (), Error = FailureError>>
                         }
                     }
-                })
-                .then(|res| match res {
+                }).then(|res| match res {
                     Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                     Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
                 }),
@@ -739,8 +711,7 @@ impl AccountService for AccountServiceImpl {
                 e.context("Receiving user from users microservice failed.")
                     .context(Error::HttpClient)
                     .into()
-            })
-            .and_then(move |user| {
+            }).and_then(move |user| {
                 if let Some(user) = user {
                     let user_id = user.id;
                     let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
@@ -760,8 +731,7 @@ impl AccountService for AccountServiceImpl {
                                             .into()
                                     })
                                 }
-                            })
-                            .and_then({
+                            }).and_then({
                                 let client = client.clone();
                                 move |token| {
                                     let user = EmailUser {
@@ -793,8 +763,7 @@ impl AccountService for AccountServiceImpl {
                         Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
                     )) as Box<Future<Item = (), Error = FailureError>>
                 }
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                 Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
             });
@@ -823,8 +792,7 @@ impl AccountService for AccountServiceImpl {
                                 .into()
                         })
                     }
-                })
-                .and_then({
+                }).and_then({
                     let client = client.clone();
                     move |email| {
                         let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), email);
@@ -836,8 +804,7 @@ impl AccountService for AccountServiceImpl {
                                 .into()
                         })
                     }
-                })
-                .and_then({
+                }).and_then({
                     let client = client.clone();
                     move |user| {
                         if let Some(user) = user {
@@ -866,8 +833,7 @@ impl AccountService for AccountServiceImpl {
                             )) as Box<Future<Item = (), Error = FailureError>>
                         }
                     }
-                })
-                .then(|res| match res {
+                }).then(|res| match res {
                     Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                     Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
                 }),

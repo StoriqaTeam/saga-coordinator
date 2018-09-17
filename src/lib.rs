@@ -15,6 +15,8 @@ extern crate serde_json;
 extern crate tokio_core;
 extern crate uuid;
 extern crate validator;
+#[macro_use]
+extern crate sentry;
 
 extern crate stq_api;
 extern crate stq_http;
@@ -30,6 +32,7 @@ pub mod config;
 mod controller;
 mod errors;
 mod models;
+pub mod sentry_integration;
 mod services;
 
 use std::process;
@@ -74,8 +77,7 @@ pub fn start_server(config: config::Config) {
 
                 Ok(app)
             }
-        })
-        .unwrap_or_else(|reason| {
+        }).unwrap_or_else(|reason| {
             eprintln!("Http Server Initialization Error: {}", reason);
             process::exit(1);
         });
@@ -88,8 +90,7 @@ pub fn start_server(config: config::Config) {
                     handle.spawn(conn.map(|_| ()).map_err(|why| eprintln!("Server Error: {:?}", why)));
                     Ok(())
                 }
-            })
-            .map_err(|_| ()),
+            }).map_err(|_| ()),
     );
 
     info!("Listening on http://{}", address);

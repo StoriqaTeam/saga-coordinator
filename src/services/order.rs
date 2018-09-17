@@ -79,19 +79,16 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.address,
                 convert_cart.convert_cart.receiver_name,
                 convert_cart.convert_cart.receiver_phone,
-            )
-            .map_err(|e| {
+            ).map_err(|e| {
                 e.context("Converting cart in orders microservice failed.")
                     .context(Error::RpcClient)
                     .into()
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
                 Err(e) => Err((self, e)),
             })
@@ -124,14 +121,12 @@ impl OrderServiceImpl {
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((self, e)),
             })
@@ -442,8 +437,7 @@ impl OrderServiceImpl {
                     Ok((s, _)) => Ok((s, orders)),
                     Err((s, _)) => Ok((s, orders)),
                 })
-            })
-            .and_then(move |(s, orders)| {
+            }).and_then(move |(s, orders)| {
                 s.notify(&orders).then(|res| match res {
                     Ok((s, _)) => Ok((s, ())),
                     Err((s, _)) => Ok((s, ())),
@@ -491,8 +485,7 @@ impl OrderServiceImpl {
                     e.context("Setting new status in orders microservice error occured.")
                         .context(Error::HttpClient)
                         .into()
-                })
-                .and_then({
+                }).and_then({
                     let client = client.clone();
                     let orders_url = orders_url.clone();
                     move |order| {
@@ -548,8 +541,7 @@ impl OrderServiceImpl {
                 e.context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
                     .context(Error::RpcClient)
                     .into()
-            })
-            .and_then(move |order| {
+            }).and_then(move |order| {
                 if let Some(order) = order {
                     Either::A(if order.state == order_state {
                         // if this status already set, do not update
@@ -563,7 +555,7 @@ impl OrderServiceImpl {
                                         "Setting order with slug {} state {} in orders microservice failed.",
                                         order_slug, order_state
                                     )).context(Error::RpcClient)
-                                        .into()
+                                    .into()
                                 }),
                         )
                     })
@@ -574,8 +566,7 @@ impl OrderServiceImpl {
                             .into(),
                     ))
                 }
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(order) => Ok((self, order)),
                 Err(e) => Err((self, e)),
             })
@@ -603,8 +594,7 @@ impl OrderServiceImpl {
                             }
                         }
                         Ok(())
-                    })
-                    .map_err(|e| {
+                    }).map_err(|e| {
                         e.context("decrementing quantity in warehouses microservice failed.")
                             .context(Error::RpcClient)
                             .into()
@@ -644,8 +634,7 @@ impl OrderServiceImpl {
                                 format!("{}/{}/create_from_cart/revert", orders_url, StqModel::Order.to_url()),
                                 Some(body),
                                 Some(headers),
-                            )
-                            .then(|_| Ok(())),
+                            ).then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
@@ -661,8 +650,7 @@ impl OrderServiceImpl {
                                 format!("{}/invoices/by-saga-id/{}", billing_url, saga_id.0,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|_| Ok(())),
+                            ).then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
@@ -690,8 +678,7 @@ impl OrderService for OrderServiceImpl {
                         };
                         future::err((Box::new(s) as Box<OrderService>, e))
                     })
-                })
-                .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
+                }).map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
         )
     }
 

@@ -6,6 +6,8 @@ use stq_http;
 use stq_logging::GrayLogConfig;
 use stq_routes::service::Service as StqService;
 
+use sentry_integration::SentryConfig;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub server: Server,
@@ -20,6 +22,7 @@ pub struct Config {
     pub cluster: Cluster,
     pub notification_urls: NotificationUrls,
     pub client: Client,
+    pub sentry: Option<SentryConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

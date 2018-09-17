@@ -33,4 +33,5 @@ stq_static_resources = { path = "vendor/libstqbackend/static_resources" }
 stq_types = { path = "vendor/libstqbackend/types" }
 tokio-core = "0.1"
 uuid = { version = "*", features = ["use_std", "v4", "serde"] }
-validator = "0.6.3"
+validator = "0.7.1"
+sentry = "0.3"
