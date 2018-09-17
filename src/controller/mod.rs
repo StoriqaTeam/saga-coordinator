@@ -63,8 +63,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /create_account in SagaCreateProfile failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |profile| {
+                    }).and_then(move |profile| {
                         account_service
                             .create(profile)
                             .map(|(_, user)| user)
@@ -78,8 +77,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /email_verify in ResetRequest failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |profile| {
+                    }).and_then(move |profile| {
                         account_service
                             .request_email_verification(profile)
                             .map(|(_, user)| user)
@@ -93,8 +91,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /email_verify_apply in EmailVerifyApply failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |profile| {
+                    }).and_then(move |profile| {
                         account_service
                             .request_email_verification_apply(profile)
                             .map(|(_, user)| user)
@@ -108,8 +105,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /reset_password in ResetRequest failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |profile| {
+                    }).and_then(move |profile| {
                         account_service
                             .request_password_reset(profile)
                             .map(|(_, user)| user)
@@ -123,8 +119,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /reset_password_apply in PasswordResetApply failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |profile| {
+                    }).and_then(move |profile| {
                         account_service
                             .request_password_reset_apply(profile)
                             .map(|(_, user)| user)
@@ -139,8 +134,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /create_store in NewStore failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |store| {
+                    }).and_then(move |store| {
                         store_service
                             .create(store)
                             .map(|(_, user)| user)
@@ -155,8 +149,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /create_order in ConvertCart failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |new_order| {
+                    }).and_then(move |new_order| {
                         order_service
                             .create(new_order)
                             .map(|(_, user)| user)
@@ -171,8 +164,7 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /orders/update_state in BillingOrdersVec failed!")
                                 .context(Error::Parse),
                         )
-                    })
-                    .and_then(move |orders_info| {
+                    }).and_then(move |orders_info| {
                         order_service
                             .update_state_by_billing(orders_info)
                             .map(|(_, _)| ())
@@ -189,8 +181,7 @@ impl Controller for ControllerImpl {
                                 order_slug
                             )).context(Error::Parse),
                         )
-                    })
-                    .and_then(move |payload| {
+                    }).and_then(move |payload| {
                         order_service
                             .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment)
                             .map(|(_, _)| ())
@@ -205,7 +196,7 @@ impl Controller for ControllerImpl {
                     m,
                     path
                 ).context(Error::NotFound)
-                    .into(),
+                .into(),
             )),
         }
     }

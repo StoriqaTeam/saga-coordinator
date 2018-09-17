@@ -73,18 +73,15 @@ impl StoreServiceImpl {
                         format!("{}/{}", stores_url, StqModel::Store.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating store in stores microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |store| {
+            }).and_then(move |store| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
                 Ok(store)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(store) => Ok((self, store)),
                 Err(e) => Err((self, e)),
             });
@@ -128,20 +125,17 @@ impl StoreServiceImpl {
                         format!("{}/{}", warehouses_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in warehouses microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(warehouse_role) => Ok((self, warehouse_role)),
                 Err(e) => Err((self, e)),
             });
@@ -183,20 +177,17 @@ impl StoreServiceImpl {
                         format!("{}/{}", orders_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in orders microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(orders_role) => Ok((self, orders_role)),
                 Err(e) => Err((self, e)),
             });
@@ -237,20 +228,17 @@ impl StoreServiceImpl {
                         format!("{}/{}", billing_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in billing microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
                 Err(e) => Err((self, e)),
             });
@@ -291,20 +279,17 @@ impl StoreServiceImpl {
                         format!("{}/{}", delivery_url, StqModel::Role.to_url()),
                         Some(body),
                         Some(headers),
-                    )
-                    .map_err(|e| {
+                    ).map_err(|e| {
                         e.context("Creating role in delivery microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::DeliveryRoleSetComplete(new_role_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
                 Err(e) => Err((self, e)),
             });
@@ -338,14 +323,12 @@ impl StoreServiceImpl {
                             .context(Error::HttpClient)
                             .into()
                     })
-            })
-            .and_then(move |res| {
+            }).and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
                 Ok(res)
-            })
-            .then(|res| match res {
+            }).then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
@@ -361,23 +344,19 @@ impl StoreServiceImpl {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_warehouse_role(user_id, store_id).map(|(s, _)| (s, store))
-                })
-                .and_then(|(s, store)| {
+                }).and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_orders_role(user_id, store_id).map(|(s, _)| (s, store))
-                })
-                .and_then(|(s, store)| {
+                }).and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_billing_role(user_id, store_id).map(|(s, _)| (s, store))
-                })
-                .and_then(|(s, store)| {
+                }).and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_delivery_role(user_id, store_id).map(|(s, _)| (s, store))
-                })
-                .and_then(|(s, store)| s.create_merchant(store.id).map(|(s, _)| (s, store))),
+                }).and_then(|(s, store)| s.create_merchant(store.id).map(|(s, _)| (s, store))),
         )
     }
 
@@ -409,8 +388,7 @@ impl StoreServiceImpl {
                                 ),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -438,8 +416,7 @@ impl StoreServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Warehouses), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -467,8 +444,7 @@ impl StoreServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Orders), "roles/by-id", role_id),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -496,8 +472,7 @@ impl StoreServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -525,8 +500,7 @@ impl StoreServiceImpl {
                                 format!("{}/{}/{}", s.config.service_url(StqService::Delivery), "roles/by-id", role_id,),
                                 None,
                                 Some(headers),
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -551,8 +525,7 @@ impl StoreServiceImpl {
                                 format!("{}/merchants/store/{}", s.config.service_url(StqService::Billing), store_id.0,),
                                 None,
                                 None,
-                            )
-                            .then(|res| match res {
+                            ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
@@ -585,8 +558,7 @@ impl StoreService for StoreServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<StoreService>, e))
                     })
-                })
-                .map_err(|(s, e): (Box<StoreService>, FailureError)| {
+                }).map_err(|(s, e): (Box<StoreService>, FailureError)| {
                     (
                         s,
                         parse_validation_errors(
