@@ -570,6 +570,12 @@ impl AccountService for AccountServiceImpl {
                     .into()
             }).and_then(move |user| {
                 if let Some(user) = user {
+                    if user.is_blocked {
+                        return Box::new(future::err(
+                            Error::Validate(validation_errors!({"email": ["email" => "Email is blocked"]})).into(),
+                        )) as Box<Future<Item = (), Error = FailureError>>;
+                    }
+
                     let user_id = user.id;
                     let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
 
@@ -713,6 +719,12 @@ impl AccountService for AccountServiceImpl {
                     .into()
             }).and_then(move |user| {
                 if let Some(user) = user {
+                    if user.is_blocked {
+                        return Box::new(future::err(
+                            Error::Validate(validation_errors!({"email": ["email" => "Email is blocked"]})).into(),
+                        )) as Box<Future<Item = (), Error = FailureError>>;
+                    }
+
                     let user_id = user.id;
                     let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
 
