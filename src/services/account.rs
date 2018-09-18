@@ -77,14 +77,20 @@ impl AccountServiceImpl {
 
         let client = self.http_client.clone();
         let users_url = self.config.service_url(StqService::Users);
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can create user
 
         let res = serde_json::to_string(&create_profile)
             .into_future()
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<User>(Method::Post, format!("{}/{}", users_url, StqModel::User.to_url()), Some(body), None)
-                    .map_err(|e| {
+                    .request::<User>(
+                        Method::Post,
+                        format!("{}/{}", users_url, StqModel::User.to_url()),
+                        Some(body),
+                        Some(headers),
+                    ).map_err(|e| {
                         e.context("Creating user in users microservice failed.")
                             .context(Error::HttpClient)
                             .into()
@@ -108,13 +114,16 @@ impl AccountServiceImpl {
         let log = self.log.clone();
         log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
 
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can add role to users
+
         let res = self
             .http_client
             .request::<StqUserRole>(
                 Method::Post,
                 format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
                 None,
-                None,
+                Some(headers),
             ).and_then(move |res| {
                 log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetComplete(user_id));
                 Ok(res)
@@ -139,6 +148,7 @@ impl AccountServiceImpl {
 
         let mut headers = Headers::new();
         headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
+        headers.set(Authorization("1".to_string())); // only super admin can add role to stores
         let res = self
             .http_client
             .request::<StqUserRole>(
