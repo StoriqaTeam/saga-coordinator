@@ -1,28 +1,10 @@
 use std::fmt;
-use std::str::FromStr;
 use std::time::SystemTime;
 
 use chrono::NaiveDate;
 
-use stq_types::{MerchantId, RoleEntryId, SagaId, UserId, UsersRole};
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-pub enum Gender {
-    Male,
-    Female,
-    Undefined,
-}
-
-impl FromStr for Gender {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Male" => Ok(Gender::Male),
-            "Female" => Ok(Gender::Female),
-            _ => Ok(Gender::Undefined),
-        }
-    }
-}
+use stq_static_resources::{Gender, Provider};
+use stq_types::{MerchantId, RoleId, SagaId, UserId};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
@@ -55,13 +37,6 @@ pub struct NewUser {
     pub birthdate: Option<NaiveDate>,
     pub last_login_at: SystemTime,
     pub saga_id: SagaId,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Provider {
-    Google,
-    Facebook,
-    Email,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,19 +73,6 @@ impl fmt::Display for SagaCreateProfile {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
-pub struct NewUserRole {
-    pub user_id: UserId,
-    pub role: UsersRole,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct UserRole {
-    pub id: i32,
-    pub user_id: UserId,
-    pub role: UsersRole,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateUserMerchantPayload {
     pub id: UserId,
@@ -143,14 +105,14 @@ pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
 pub enum CreateProfileOperationStage {
     AccountCreationStart(SagaId),
     AccountCreationComplete(SagaId),
-    UsersRoleSetStart(UserId),
-    UsersRoleSetComplete(UserId),
-    StoreRoleSetStart(UserId),
-    StoreRoleSetComplete(UserId),
-    BillingRoleSetStart(RoleEntryId),
-    BillingRoleSetComplete(RoleEntryId),
-    DeliveryRoleSetStart(RoleEntryId),
-    DeliveryRoleSetComplete(RoleEntryId),
+    UsersRoleSetStart(RoleId),
+    UsersRoleSetComplete(RoleId),
+    StoreRoleSetStart(RoleId),
+    StoreRoleSetComplete(RoleId),
+    BillingRoleSetStart(RoleId),
+    BillingRoleSetComplete(RoleId),
+    DeliveryRoleSetStart(RoleId),
+    DeliveryRoleSetComplete(RoleId),
     BillingCreateMerchantStart(UserId),
     BillingCreateMerchantComplete(UserId),
 }

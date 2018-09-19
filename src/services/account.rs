@@ -15,12 +15,11 @@ use stq_http::request_util::Currency as CurrencyHeader;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::*;
-use stq_types::{MerchantId, RoleEntryId, SagaId, StoresRole, UserId};
+use stq_types::{BillingRole, DeliveryRole, MerchantId, RoleId, SagaId, StoresRole, UserId, UsersRole};
 
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use models::create_profile::UserRole as StqUserRole;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -108,82 +107,106 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_user_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
+    fn create_user_role(self, user_id: UserId) -> ServiceFuture<Self, NewRole<UsersRole>> {
         debug!("Creating user role for user_id: {} in users microservice", user_id);
         // Create user role
         let log = self.log.clone();
-        log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetStart(user_id));
+
+        let new_role_id = RoleId::new();
+        let role = NewRole::<UsersRole>::new(new_role_id, user_id, UsersRole::User, None);
+
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::UsersRoleSetStart(new_role_id));
 
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can add role to users
 
-        let res = self
-            .http_client
-            .request::<StqUserRole>(
-                Method::Post,
-                format!("{}/{}/{}", self.config.service_url(StqService::Users), "roles/default", user_id),
-                None,
-                Some(headers),
-            ).and_then(move |res| {
-                log.lock().unwrap().push(CreateProfileOperationStage::UsersRoleSetComplete(user_id));
+        let client = self.http_client.clone();
+        let users_url = self.config.service_url(StqService::Users);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<NewRole<UsersRole>>(
+                        Method::Post,
+                        format!("{}/{}", users_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    ).map_err(|e| {
+                        e.context("Creating role in users microservice failed.")
+                            .context(Error::HttpClient)
+                            .into()
+                    })
+            }).and_then(move |res| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::UsersRoleSetComplete(new_role_id));
                 Ok(res)
             }).then(|res| match res {
-                Ok(role) => Ok((self, role)),
-                Err(e) => Err((
-                    self,
-                    e.context("Creating role in users microservice failed.")
-                        .context(Error::HttpClient)
-                        .into(),
-                )),
+                Ok(users_role) => Ok((self, users_role)),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
     }
 
-    fn create_store_role(self, user_id: UserId) -> ServiceFuture<Self, StqUserRole> {
+    fn create_store_role(self, user_id: UserId) -> ServiceFuture<Self, NewRole<StoresRole>> {
         debug!("Creating user role for user_id: {} in stores microservice", user_id);
         // Create store role
         let log = self.log.clone();
-        log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetStart(user_id));
+
+        let new_role_id = RoleId::new();
+        let role = NewRole::<StoresRole>::new(new_role_id, user_id, StoresRole::User, None);
+
+        log.lock()
+            .unwrap()
+            .push(CreateProfileOperationStage::StoreRoleSetStart(new_role_id));
 
         let mut headers = Headers::new();
         headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
         headers.set(Authorization("1".to_string())); // only super admin can add role to stores
-        let res = self
-            .http_client
-            .request::<StqUserRole>(
-                Method::Post,
-                format!("{}/{}/{}", self.config.service_url(StqService::Stores), "roles/default", user_id),
-                None,
-                Some(headers),
-            ).and_then(move |res| {
-                log.lock().unwrap().push(CreateProfileOperationStage::StoreRoleSetComplete(user_id));
+
+        let client = self.http_client.clone();
+        let stores_url = self.config.service_url(StqService::Stores);
+
+        let res = serde_json::to_string(&role)
+            .into_future()
+            .map_err(From::from)
+            .and_then(move |body| {
+                client
+                    .request::<NewRole<StoresRole>>(
+                        Method::Post,
+                        format!("{}/{}", stores_url, StqModel::Role.to_url()),
+                        Some(body),
+                        Some(headers),
+                    ).map_err(|e| {
+                        e.context("Creating role in stores microservice failed.")
+                            .context(Error::HttpClient)
+                            .into()
+                    })
+            }).and_then(move |res| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateProfileOperationStage::StoreRoleSetComplete(new_role_id));
                 Ok(res)
             }).then(|res| match res {
-                Ok(role) => Ok((self, role)),
-                Err(e) => Err((
-                    self,
-                    e.context("Creating role in stores microservice failed.")
-                        .context(Error::HttpClient)
-                        .into(),
-                )),
+                Ok(stores_role) => Ok((self, stores_role)),
+                Err(e) => Err((self, e)),
             });
 
         Box::new(res)
     }
 
-    fn create_billing_role(self, user_id: UserId) -> ServiceFuture<Self, BillingRole> {
+    fn create_billing_role(self, user_id: UserId) -> ServiceFuture<Self, NewRole<BillingRole>> {
         // Create billing role
         debug!("Creating billing role, user id: {}", user_id);
         let log = self.log.clone();
 
-        let new_role_id = RoleEntryId::new();
-        let role = BillingRole {
-            id: new_role_id,
-            user_id,
-            name: StoresRole::User,
-            data: None,
-        };
+        let new_role_id = RoleId::new();
+        let role = NewRole::<BillingRole>::new(new_role_id, user_id, BillingRole::User, None);
 
         log.lock()
             .unwrap()
@@ -200,7 +223,7 @@ impl AccountServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<BillingRole>(
+                    .request::<NewRole<BillingRole>>(
                         Method::Post,
                         format!("{}/{}", billing_url, StqModel::Role.to_url()),
                         Some(body),
@@ -223,18 +246,13 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn create_delivery_role(self, user_id: UserId) -> ServiceFuture<Self, DeliveryRole> {
+    fn create_delivery_role(self, user_id: UserId) -> ServiceFuture<Self, NewRole<DeliveryRole>> {
         // Create delivery role
         debug!("Creating delivery role, user id: {}", user_id);
         let log = self.log.clone();
 
-        let new_role_id = RoleEntryId::new();
-        let role = BillingRole {
-            id: new_role_id,
-            user_id,
-            name: StoresRole::User,
-            data: None,
-        };
+        let new_role_id = RoleId::new();
+        let role = NewRole::<DeliveryRole>::new(new_role_id, user_id, DeliveryRole::User, None);
 
         log.lock()
             .unwrap()
@@ -251,7 +269,7 @@ impl AccountServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<DeliveryRole>(
+                    .request::<NewRole<DeliveryRole>>(
                         Method::Post,
                         format!("{}/{}", delivery_url, StqModel::Role.to_url()),
                         Some(body),
@@ -404,33 +422,6 @@ impl AccountServiceImpl {
         let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
         for e in log {
             match e {
-                CreateProfileOperationStage::StoreRoleSetComplete(user_id) => {
-                    debug!("Reverting users role, user_id: {}", user_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-                        s.http_client
-                            .request::<StqUserRole>(
-                                Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Stores), "roles/default", user_id,),
-                                None,
-                                Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert StoreRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
-                }
-
                 CreateProfileOperationStage::AccountCreationComplete(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
                     fut = Box::new(fut.then(move |res| {
@@ -439,7 +430,7 @@ impl AccountServiceImpl {
                             Err((s, _)) => s,
                         };
                         s.http_client
-                            .request::<StqUserRole>(
+                            .request::<User>(
                                 Method::Delete,
                                 format!("{}/{}/{}", s.config.service_url(StqService::Users), "user_by_saga_id", saga_id,),
                                 None,
@@ -456,8 +447,63 @@ impl AccountServiceImpl {
                     }));
                 }
 
+                CreateProfileOperationStage::UsersRoleSetComplete(role_id) => {
+                    debug!("Reverting users role, role_id: {}", role_id);
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+                        let mut headers = Headers::new();
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from users
+                        s.http_client
+                            .request::<NewRole<UsersRole>>(
+                                Method::Delete,
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Users), role_id),
+                                None,
+                                Some(headers),
+                            ).then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    e.context("Account service create_revert UsersRoleSetComplete error occured.")
+                                        .context(Error::HttpClient)
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
+                CreateProfileOperationStage::StoreRoleSetComplete(role_id) => {
+                    debug!("Reverting stores users role, role_id: {}", role_id);
+                    fut = Box::new(fut.then(move |res| {
+                        let s = match res {
+                            Ok((s, _)) => s,
+                            Err((s, _)) => s,
+                        };
+                        let mut headers = Headers::new();
+                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
+                        headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
+                        s.http_client
+                            .request::<NewRole<StoresRole>>(
+                                Method::Delete,
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Stores), role_id),
+                                None,
+                                Some(headers),
+                            ).then(|res| match res {
+                                Ok(_) => Ok((s, ())),
+                                Err(e) => Err((
+                                    s,
+                                    e.context("Account service create_revert StoreRoleSetComplete error occured.")
+                                        .context(Error::HttpClient)
+                                        .into(),
+                                )),
+                            })
+                    }));
+                }
+
                 CreateProfileOperationStage::BillingRoleSetComplete(role_id) => {
-                    debug!("Reverting billing role, user_id: {}", role_id);
+                    debug!("Reverting billing role, role_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
                             Ok((s, _)) => s,
@@ -467,16 +513,16 @@ impl AccountServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<NewRole<BillingRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Billing), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
                                 Ok(_) => Ok((s, ())),
                                 Err(e) => Err((
                                     s,
-                                    e.context("Store service create_revert BillingRoleSetStart error occured.")
+                                    e.context("Account service create_revert BillingRoleSetStart error occured.")
                                         .context(Error::HttpClient)
                                         .into(),
                                 )),
@@ -485,7 +531,7 @@ impl AccountServiceImpl {
                 }
 
                 CreateProfileOperationStage::DeliveryRoleSetComplete(role_id) => {
-                    debug!("Reverting delivery role, user_id: {}", role_id);
+                    debug!("Reverting delivery role, role_id: {}", role_id);
                     fut = Box::new(fut.then(move |res| {
                         let s = match res {
                             Ok((s, _)) => s,
@@ -495,9 +541,9 @@ impl AccountServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from delivery
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<NewRole<DeliveryRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Delivery), "roles/by-id", role_id,),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Delivery), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
