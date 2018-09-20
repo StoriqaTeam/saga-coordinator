@@ -5,6 +5,7 @@ use failure::Fail;
 use futures;
 use futures::future;
 use futures::prelude::*;
+use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 use hyper::Method;
@@ -417,178 +418,120 @@ impl AccountServiceImpl {
     }
 
     // Contains reversal of account creation
-    fn create_revert(self) -> ServiceFuture<Self, ()> {
+    fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log {
+        let http_client = self.http_client.clone();
+        let billing_url = self.config.service_url(StqService::Billing);
+        let users_url = self.config.service_url(StqService::Users);
+        let stores_url = self.config.service_url(StqService::Stores);
+        let delivery_url = self.config.service_url(StqService::Delivery);
+
+        let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
                 CreateProfileOperationStage::AccountCreationComplete(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin can delete user
+
+                    Box::new(
+                        http_client
                             .request::<User>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Users), "user_by_saga_id", saga_id,),
+                                format!("{}/user_by_saga_id/{}", users_url, saga_id),
                                 None,
-                                None,
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert AccountCreationStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                                Some(headers),
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::UsersRoleSetComplete(role_id) => {
                     debug!("Reverting users role, role_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from users
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
+
+                    Box::new(
+                        http_client
                             .request::<NewRole<UsersRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Users), role_id),
+                                format!("{}/roles/by-id/{}", users_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert UsersRoleSetComplete error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::StoreRoleSetComplete(role_id) => {
                     debug!("Reverting stores users role, role_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
+
+                    Box::new(
+                        http_client
                             .request::<NewRole<StoresRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Stores), role_id),
+                                format!("{}/roles/by-id/{}", stores_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert StoreRoleSetComplete error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, role_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<NewRole<BillingRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Billing), role_id),
+                                format!("{}/roles/by-id/{}", billing_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert BillingRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::DeliveryRoleSetComplete(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from delivery
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<NewRole<DeliveryRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Delivery), role_id),
+                                format!("{}/roles/by-id/{}", delivery_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert DeliveryRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::BillingCreateMerchantComplete(user_id) => {
                     debug!("Reverting merchant, user_id: {}", user_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete merchant
+
+                    Box::new(
+                        http_client
                             .request::<MerchantId>(
                                 Method::Delete,
-                                format!("{}/merchants/user/{}", s.config.service_url(StqService::Billing), user_id.0,),
+                                format!("{}/merchants/user/{}", billing_url, user_id.0),
                                 None,
-                                None,
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context(format_err!(
-                                        "Account service create_revert BillingCreateMerchantStart error occured."
-                                    )).context(Error::HttpClient)
-                                    .into(),
-                                )),
-                            })
-                    }));
+                                Some(headers),
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                _ => {}
+                _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
             }
-        }
+        });
 
-        fut
+        fut.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+        })
     }
 }
 
