@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use failure::Error as FailureError;
 use failure::Fail;
 use futures;
+use futures::future;
 use futures::prelude::*;
+use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 use hyper::Method;
@@ -342,187 +344,121 @@ impl StoreServiceImpl {
     }
 
     // Contains reversal of Store creation
-    fn create_revert(self) -> ServiceFuture<Self, ()> {
+    fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
+        let http_client = self.http_client.clone();
+        let billing_url = self.config.service_url(StqService::Billing);
+        let stores_url = self.config.service_url(StqService::Stores);
+        let delivery_url = self.config.service_url(StqService::Delivery);
+        let warehouse_url = self.config.service_url(StqService::Warehouses);
+        let orders_url = self.config.service_url(StqService::Orders);
 
-        let mut fut: ServiceFuture<Self, ()> = Box::new(futures::future::ok((self, ())));
-        for e in log {
+        let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
                 CreateStoreOperationStage::StoreCreationComplete(store_id) => {
                     debug!("Reverting store, store_id: {}", store_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // reverting store with superuser credentials
-                        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // reverting store with superuser credentials
+                    headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
+                    Box::new(
+                        http_client
                             .request::<Store>(
                                 Method::Delete,
-                                format!(
-                                    "{}/{}/{}",
-                                    s.config.service_url(StqService::Stores),
-                                    StqModel::Store.to_url(),
-                                    store_id,
-                                ),
+                                format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id,),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert StoreCreationStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::WarehousesRoleSetComplete(role_id) => {
                     debug!("Reverting warehouses role, user_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<RoleEntry<NewWarehouseRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Warehouses), role_id),
+                                format!("{}/roles/by-id/{}", warehouse_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert WarehouseRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::OrdersRoleSetComplete(role_id) => {
                     debug!("Reverting orders role, user_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from orders
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<RoleEntry<NewOrdersRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Orders), role_id),
+                                format!("{}/roles/by-id/{}", orders_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert OrdersRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<NewRole<BillingRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Billing), role_id),
+                                format!("{}/roles/by-id/{}", billing_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert BillingRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::DeliveryRoleSetComplete(role_id) => {
-                    debug!("Reverting delivery role, user_id: {}", role_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string())); // only super admin can delete role from delivery
+                    debug!("Reverting delivery role, role_id: {}", role_id);
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
-                        s.http_client
+                    Box::new(
+                        http_client
                             .request::<NewRole<DeliveryRole>>(
                                 Method::Delete,
-                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Delivery), role_id),
+                                format!("{}/roles/by-id/{}", delivery_url, role_id),
                                 None,
                                 Some(headers),
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Store service create_revert DeliveryRoleSetStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::BillingCreateMerchantComplete(store_id) => {
                     debug!("Reverting merchant, store_id: {}", store_id);
-                    fut = Box::new(fut.then(move |res| {
-                        let s = match res {
-                            Ok((s, _)) => s,
-                            Err((s, _)) => s,
-                        };
-                        s.http_client
+                    let mut headers = Headers::new();
+                    headers.set(Authorization("1".to_string())); // only super admin delete merchant
+
+                    Box::new(
+                        http_client
                             .request::<MerchantId>(
                                 Method::Delete,
-                                format!("{}/merchants/store/{}", s.config.service_url(StqService::Billing), store_id.0,),
+                                format!("{}/merchants/store/{}", billing_url, store_id.0,),
                                 None,
-                                None,
-                            ).then(|res| match res {
-                                Ok(_) => Ok((s, ())),
-                                Err(e) => Err((
-                                    s,
-                                    e.context("Account service create_revert BillingCreateMerchantStart error occured.")
-                                        .context(Error::HttpClient)
-                                        .into(),
-                                )),
-                            })
-                    }));
+                                Some(headers),
+                            ).then(|_| Ok(())),
+                    ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                _ => {}
+                _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
             }
-        }
+        });
 
-        fut
+        fut.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+        })
     }
 }
 
