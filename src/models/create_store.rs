@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use serde_json;
 
 use stq_static_resources::ModerationStatus;
-use stq_types::{RoleEntryId, StoreId, StoresRole, UserId};
+use stq_types::{RoleEntryId, RoleId, StoreId, UserId};
 
 /// Payload for querying stores
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -70,31 +70,6 @@ pub struct NewStore {
     pub saga_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Payload {
-    pub name: StoresRole,
-    pub data: StoreId,
-}
-
-pub type NewRole = Payload;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Role {
-    pub id: RoleEntryId,
-    pub user_id: UserId,
-    pub role: Payload,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BillingRole {
-    pub id: RoleEntryId,
-    pub user_id: UserId,
-    pub name: StoresRole,
-    pub data: Option<StoreId>,
-}
-
-pub type DeliveryRole = BillingRole;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateStoreMerchantPayload {
     pub id: StoreId,
@@ -110,10 +85,10 @@ pub enum CreateStoreOperationStage {
     WarehousesRoleSetComplete(RoleEntryId),
     OrdersRoleSetStart(RoleEntryId),
     OrdersRoleSetComplete(RoleEntryId),
-    BillingRoleSetStart(RoleEntryId),
-    BillingRoleSetComplete(RoleEntryId),
-    DeliveryRoleSetStart(RoleEntryId),
-    DeliveryRoleSetComplete(RoleEntryId),
+    BillingRoleSetStart(RoleId),
+    BillingRoleSetComplete(RoleId),
+    DeliveryRoleSetStart(RoleId),
+    DeliveryRoleSetComplete(RoleId),
     BillingCreateMerchantStart(StoreId),
     BillingCreateMerchantComplete(StoreId),
 }

@@ -14,12 +14,11 @@ use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_http::request_util::Currency as CurrencyHeader;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_types::{MerchantId, RoleEntryId, StoreId, StoresRole, UserId};
+use stq_types::{BillingRole, DeliveryRole, MerchantId, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
 
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use models::create_store::Role;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -89,21 +88,17 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_warehouse_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, Role> {
-        // Create warehouse role
-        debug!("Creating warehouse role, user id: {}, store id: {}", user_id, store_id);
+    fn create_warehouses_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, RoleEntry<NewWarehouseRole>> {
+        // Create warehouses role
+        debug!("Creating warehouses role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
         let new_role_id = RoleEntryId::new();
-        let role_payload = NewRole {
-            name: StoresRole::StoreManager,
+        let role_payload = NewWarehouseRole {
+            name: WarehouseRole::StoreManager,
             data: store_id,
         };
-        let role = Role {
-            id: new_role_id,
-            user_id,
-            role: role_payload.clone(),
-        };
+        let role = RoleEntry::<NewWarehouseRole>::new(new_role_id, user_id, role_payload);
 
         log.lock()
             .unwrap()
@@ -120,7 +115,7 @@ impl StoreServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<Role>(
+                    .request::<RoleEntry<NewWarehouseRole>>(
                         Method::Post,
                         format!("{}/{}", warehouses_url, StqModel::Role.to_url()),
                         Some(body),
@@ -136,28 +131,24 @@ impl StoreServiceImpl {
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
                 Ok(res)
             }).then(|res| match res {
-                Ok(warehouse_role) => Ok((self, warehouse_role)),
+                Ok(warehouses_role) => Ok((self, warehouses_role)),
                 Err(e) => Err((self, e)),
             });
 
         Box::new(res)
     }
 
-    fn create_orders_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, Role> {
+    fn create_orders_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, RoleEntry<NewOrdersRole>> {
         // Create orders role
         debug!("Creating orders role, user id: {}, store id: {}", user_id, store_id);
         let log = self.log.clone();
 
         let new_role_id = RoleEntryId::new();
-        let role_payload = NewRole {
-            name: StoresRole::StoreManager,
+        let role_payload = NewOrdersRole {
+            name: OrderRole::StoreManager,
             data: store_id,
         };
-        let role = Role {
-            id: new_role_id,
-            user_id,
-            role: role_payload.clone(),
-        };
+        let role = RoleEntry::<NewOrdersRole>::new(new_role_id, user_id, role_payload);
 
         log.lock().unwrap().push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id));
 
@@ -172,7 +163,7 @@ impl StoreServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<Role>(
+                    .request::<RoleEntry<NewOrdersRole>>(
                         Method::Post,
                         format!("{}/{}", orders_url, StqModel::Role.to_url()),
                         Some(body),
@@ -195,18 +186,13 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_billing_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, BillingRole> {
+    fn create_billing_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, NewRole<BillingRole>> {
         // Create billing role
-        debug!("Creating billing role, user id: {}, store id: {}", user_id, store_id);
+        debug!("Creating billing role, user id: {}", user_id);
         let log = self.log.clone();
 
-        let new_role_id = RoleEntryId::new();
-        let role = BillingRole {
-            id: new_role_id,
-            user_id,
-            name: StoresRole::StoreManager,
-            data: Some(store_id),
-        };
+        let new_role_id = RoleId::new();
+        let role = NewRole::<BillingRole>::new(new_role_id, user_id, BillingRole::User, Some(store_id));
 
         log.lock()
             .unwrap()
@@ -223,7 +209,7 @@ impl StoreServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<BillingRole>(
+                    .request::<NewRole<BillingRole>>(
                         Method::Post,
                         format!("{}/{}", billing_url, StqModel::Role.to_url()),
                         Some(body),
@@ -246,18 +232,13 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_delivery_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, DeliveryRole> {
+    fn create_delivery_role(self, user_id: UserId, store_id: StoreId) -> ServiceFuture<Self, NewRole<DeliveryRole>> {
         // Create delivery role
-        debug!("Creating delivery role, user id: {}, store id: {}", user_id, store_id);
+        debug!("Creating delivery role, user id: {}", user_id);
         let log = self.log.clone();
 
-        let new_role_id = RoleEntryId::new();
-        let role = DeliveryRole {
-            id: new_role_id,
-            user_id,
-            name: StoresRole::StoreManager,
-            data: Some(store_id),
-        };
+        let new_role_id = RoleId::new();
+        let role = NewRole::<DeliveryRole>::new(new_role_id, user_id, DeliveryRole::User, Some(store_id));
 
         log.lock()
             .unwrap()
@@ -274,7 +255,7 @@ impl StoreServiceImpl {
             .map_err(From::from)
             .and_then(move |body| {
                 client
-                    .request::<DeliveryRole>(
+                    .request::<NewRole<DeliveryRole>>(
                         Method::Post,
                         format!("{}/{}", delivery_url, StqModel::Role.to_url()),
                         Some(body),
@@ -343,7 +324,7 @@ impl StoreServiceImpl {
                 .and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
-                    s.create_warehouse_role(user_id, store_id).map(|(s, _)| (s, store))
+                    s.create_warehouses_role(user_id, store_id).map(|(s, _)| (s, store))
                 }).and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
@@ -411,9 +392,9 @@ impl StoreServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from warehouses
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<RoleEntry<NewWarehouseRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Warehouses), "roles/by-id", role_id,),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Warehouses), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
@@ -439,9 +420,9 @@ impl StoreServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from orders
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<RoleEntry<NewOrdersRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Orders), "roles/by-id", role_id),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Orders), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
@@ -467,9 +448,9 @@ impl StoreServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from billing
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<NewRole<BillingRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Billing), "roles/by-id", role_id,),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Billing), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
@@ -495,9 +476,9 @@ impl StoreServiceImpl {
                         headers.set(Authorization("1".to_string())); // only super admin can delete role from delivery
 
                         s.http_client
-                            .request::<Role>(
+                            .request::<NewRole<DeliveryRole>>(
                                 Method::Delete,
-                                format!("{}/{}/{}", s.config.service_url(StqService::Delivery), "roles/by-id", role_id,),
+                                format!("{}/roles/by-id/{}", s.config.service_url(StqService::Delivery), role_id),
                                 None,
                                 Some(headers),
                             ).then(|res| match res {
