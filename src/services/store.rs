@@ -194,7 +194,7 @@ impl StoreServiceImpl {
         let log = self.log.clone();
 
         let new_role_id = RoleId::new();
-        let role = NewRole::<BillingRole>::new(new_role_id, user_id, BillingRole::User, Some(store_id));
+        let role = NewRole::<BillingRole>::new(new_role_id, user_id, BillingRole::StoreManager, Some(store_id));
 
         log.lock()
             .unwrap()
@@ -240,7 +240,7 @@ impl StoreServiceImpl {
         let log = self.log.clone();
 
         let new_role_id = RoleId::new();
-        let role = NewRole::<DeliveryRole>::new(new_role_id, user_id, DeliveryRole::User, Some(store_id));
+        let role = NewRole::<DeliveryRole>::new(new_role_id, user_id, DeliveryRole::StoreManager, Some(store_id));
 
         log.lock()
             .unwrap()
