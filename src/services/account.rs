@@ -637,6 +637,7 @@ impl AccountService for AccountServiceImpl {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
         let client = self.http_client.clone();
+        let cluster_url = self.config.cluster.url.clone();
         let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
         Box::new(
             serde_json::to_string(&input)
@@ -674,7 +675,7 @@ impl AccountService for AccountServiceImpl {
                                 first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
                                 last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                             };
-                            let email = ApplyPasswordResetForUser { user };
+                            let email = ApplyPasswordResetForUser { user, cluster_url };
                             let url = format!("{}/{}/apply-password-reset", notification_url, StqModel::User.to_url());
                             Box::new(
                                 serde_json::to_string(&email)
