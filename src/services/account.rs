@@ -68,6 +68,7 @@ impl AccountServiceImpl {
         let create_profile = SagaCreateProfile {
             user: new_user,
             identity: new_ident,
+            device: input.device.clone(),
         };
 
         let log = self.log.clone();
@@ -333,14 +334,23 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn notify_user(self, user: User) -> ServiceFuture<Self, ()> {
+    fn notify_user(self, user: User, device: Option<Device>) -> ServiceFuture<Self, ()> {
         debug!("Notifiing user in notificatins microservice");
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
-        let verify_email_path = self.config.notification_urls.verify_email_path.clone();
+        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
+        let verify_email_path = device
+            .map(|device| match device {
+                Device::WEB => web.clone(),
+                Device::IOS => ios,
+                Device::Android => android,
+            }).unwrap_or_else(|| web);
 
         let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
-        let reset = ResetRequest { email: user.email.clone() };
+        let reset = ResetRequest {
+            email: user.email.clone(),
+            device: device,
+        };
         let user_id = user.id;
         let res = serde_json::to_string(&reset)
             .map_err(From::from)
@@ -395,6 +405,7 @@ impl AccountServiceImpl {
     fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
         let saga_id = SagaId::new();
         let provider = input.identity.provider.clone();
+        let device = input.device.clone();
 
         Box::new(
             self.create_user(input, saga_id)
@@ -406,7 +417,7 @@ impl AccountServiceImpl {
                 .and_then(move |(s, user)| {
                     if provider == Provider::Email {
                         // only if provider is email it needs to ber verified
-                        Box::new(s.notify_user(user.clone()).then(|res| match res {
+                        Box::new(s.notify_user(user.clone(), device).then(|res| match res {
                             Ok((s, _)) => Ok((s, user)),
                             Err((s, _)) => Ok((s, user)),
                         })) as ServiceFuture<Self, User>
@@ -555,7 +566,16 @@ impl AccountService for AccountServiceImpl {
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
-        let reset_password_path = self.config.notification_urls.reset_password_path.clone();
+        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.clone();
+        let reset_password_path = input
+            .device
+            .clone()
+            .map(|device| match device {
+                Device::WEB => web.clone(),
+                Device::IOS => ios,
+                Device::Android => android,
+            }).unwrap_or_else(|| web);
+
         let client = self.http_client.clone();
 
         let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), input.email);
@@ -705,7 +725,16 @@ impl AccountService for AccountServiceImpl {
     fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
-        let verify_email_path = self.config.notification_urls.verify_email_path.clone();
+        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
+        let verify_email_path = input
+            .device
+            .clone()
+            .map(|device| match device {
+                Device::WEB => web.clone(),
+                Device::IOS => ios,
+                Device::Android => android,
+            }).unwrap_or_else(|| web);
+
         let client = self.http_client.clone();
 
         let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), input.email);

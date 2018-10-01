@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use chrono::NaiveDate;
 
-use stq_static_resources::{Gender, Provider};
+use stq_static_resources::{Device, Gender, Provider};
 use stq_types::{MerchantId, RoleId, SagaId, UserId};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -65,6 +65,7 @@ impl fmt::Display for NewIdentity {
 pub struct SagaCreateProfile {
     pub user: Option<NewUser>,
     pub identity: NewIdentity,
+    pub device: Option<Device>,
 }
 
 impl fmt::Display for SagaCreateProfile {
@@ -86,6 +87,7 @@ pub struct Merchant {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ResetRequest {
     pub email: String,
+    pub device: Option<Device>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
