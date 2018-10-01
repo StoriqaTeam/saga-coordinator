@@ -96,6 +96,18 @@ pub struct EmailVerifyApply {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct EmailVerifyApplyToken {
+    pub user: User,
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResetApplyToken {
+    pub email: String,
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PasswordResetApply {
     pub token: String,
     pub password: String,

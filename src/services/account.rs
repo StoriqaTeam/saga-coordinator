@@ -27,9 +27,9 @@ use services::types::ServiceFuture;
 pub trait AccountService {
     fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, User>;
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
-    fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, ()>;
+    fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String>;
     fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, ()>;
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String>;
 }
 
 /// Account service, responsible for Creating user
@@ -653,7 +653,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(res)
     }
 
-    fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, ()> {
+    fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
         let client = self.http_client.clone();
@@ -668,27 +668,31 @@ impl AccountService for AccountServiceImpl {
                     move |body| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
-                        client.request::<String>(Method::Put, url, Some(body), Some(headers)).map_err(|e| {
-                            e.context("Applying password reset token in users microservice failed.")
-                                .context(Error::HttpClient)
-                                .into()
-                        })
+                        client
+                            .request::<ResetApplyToken>(Method::Put, url, Some(body), Some(headers))
+                            .map_err(|e| {
+                                e.context("Applying password reset token in users microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            })
                     }
                 }).and_then({
                     let client = client.clone();
-                    move |email| {
-                        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), email);
+                    move |reset_token| {
+                        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), reset_token.email);
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
-                        client.request::<Option<User>>(Method::Get, url, None, Some(headers)).map_err(|e| {
-                            e.context("Receiving user from users microservice failed.")
-                                .context(Error::HttpClient)
-                                .into()
-                        })
+                        client
+                            .request::<Option<User>>(Method::Get, url, None, Some(headers))
+                            .map_err(|e| {
+                                e.context("Receiving user from users microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            }).map(|user| (user, reset_token.token))
                     }
                 }).and_then({
                     let client = client.clone();
-                    move |user| {
+                    move |(user, token)| {
                         if let Some(user) = user {
                             let user = EmailUser {
                                 email: user.email.clone(),
@@ -707,16 +711,17 @@ impl AccountService for AccountServiceImpl {
                                         client
                                             .request::<()>(Method::Post, url, Some(body), Some(headers))
                                             .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
+                                            .map(|_| token)
                                     }),
                             )
                         } else {
                             Box::new(future::err(
                                 Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
-                            )) as Box<Future<Item = (), Error = FailureError>>
+                            )) as Box<Future<Item = String, Error = FailureError>>
                         }
                     }
                 }).then(|res| match res {
-                    Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
+                    Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
                     Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
                 }),
         )
@@ -812,7 +817,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(res)
     }
 
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, ()> {
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
         let users_url = self.config.service_url(StqService::Users);
         let notification_url = self.config.service_url(StqService::Notifications);
         let client = self.http_client.clone();
@@ -827,55 +832,41 @@ impl AccountService for AccountServiceImpl {
                     move |body| {
                         let mut headers = Headers::new();
                         headers.set(Authorization("1".to_string()));
-                        client.request::<String>(Method::Put, url, Some(body), Some(headers)).map_err(|e| {
-                            e.context("Applying email verification token in users microservice failed.")
-                                .context(Error::HttpClient)
-                                .into()
-                        })
+                        client
+                            .request::<EmailVerifyApplyToken>(Method::Put, url, Some(body), Some(headers))
+                            .map_err(|e| {
+                                e.context("Applying email verification token in users microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            })
                     }
                 }).and_then({
                     let client = client.clone();
-                    move |email| {
-                        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), email);
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string()));
-                        client.request::<Option<User>>(Method::Get, url, None, Some(headers)).map_err(|e| {
-                            e.context("Receiving user from users microservice failed.")
-                                .context(Error::HttpClient)
-                                .into()
-                        })
-                    }
-                }).and_then({
-                    let client = client.clone();
-                    move |user| {
-                        if let Some(user) = user {
-                            let user = EmailUser {
-                                email: user.email.clone(),
-                                first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                                last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                            };
-                            let email = ApplyEmailVerificationForUser { user };
-                            let url = format!("{}/{}/apply-email-verification", notification_url, StqModel::User.to_url());
-                            Box::new(
-                                serde_json::to_string(&email)
-                                    .map_err(From::from)
-                                    .into_future()
-                                    .and_then(move |body| {
-                                        let mut headers = Headers::new();
-                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                        client
-                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                            .map_err(|e| e.context("Sending notification failed.").into())
-                                    }),
-                            )
-                        } else {
-                            Box::new(future::err(
-                                Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
-                            )) as Box<Future<Item = (), Error = FailureError>>
-                        }
+                    move |email_apply_token| {
+                        let EmailVerifyApplyToken { user, token } = email_apply_token;
+                        let email_user = EmailUser {
+                            email: user.email.clone(),
+                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                        };
+                        let email = ApplyEmailVerificationForUser { user: email_user };
+                        let url = format!("{}/{}/apply-email-verification", notification_url, StqModel::User.to_url());
+
+                        Box::new(
+                            serde_json::to_string(&email)
+                                .map_err(From::from)
+                                .into_future()
+                                .and_then(move |body| {
+                                    let mut headers = Headers::new();
+                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
+                                    client
+                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
+                                        .map_err(|e| e.context("Sending notification failed.").into())
+                                }).map(|_| token),
+                        )
                     }
                 }).then(|res| match res {
-                    Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
+                    Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
                     Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
                 }),
         )
