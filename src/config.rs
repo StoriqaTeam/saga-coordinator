@@ -51,8 +51,15 @@ pub struct Cluster {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NotificationUrls {
-    pub verify_email_path: String,
-    pub reset_password_path: String,
+    pub verify_email: DevicesUrls,
+    pub reset_password: DevicesUrls,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DevicesUrls {
+    pub web: String,
+    pub ios: String,
+    pub android: String,
 }
 
 impl Config {
