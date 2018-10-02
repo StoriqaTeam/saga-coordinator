@@ -153,3 +153,41 @@ pub struct Transaction {
     pub id: String,
     pub amount_captured: ProductPrice,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BuyNow {
+    pub customer_id: UserId,
+    #[serde(flatten)]
+    pub address: AddressFull,
+    pub product_id: ProductId,
+    pub receiver_name: String,
+    pub price: ProductSellerPrice,
+    pub currency: Currency,
+    pub receiver_phone: String,
+}
+
+impl BuyNow {
+    pub fn to_convert_cart(self) -> ConvertCart {
+        let BuyNow {
+            customer_id,
+            address,
+            product_id,
+            receiver_name,
+            price,
+            currency,
+            receiver_phone,
+        } = self;
+
+        let mut prices = HashMap::new();
+        prices.insert(product_id, price);
+
+        ConvertCart {
+            customer_id,
+            address,
+            receiver_name,
+            receiver_phone,
+            prices,
+            currency,
+        }
+    }
+}

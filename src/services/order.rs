@@ -30,6 +30,7 @@ use services::types::ServiceFuture;
 
 pub trait OrderService {
     fn create(self, input: ConvertCart) -> ServiceFuture<Box<OrderService>, Invoice>;
+    fn create_buy_now(self, input: BuyNow) -> ServiceFuture<Box<OrderService>, Invoice>;
     fn update_state_by_billing(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()>;
     fn manual_set_state(
         self,
@@ -679,6 +680,15 @@ impl OrderService for OrderServiceImpl {
                         future::err((Box::new(s) as Box<OrderService>, e))
                     })
                 }).map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
+        )
+    }
+
+    fn create_buy_now(self, input: BuyNow) -> ServiceFuture<Box<OrderService>, Invoice> {
+        Box::new(
+            self.create_happy(input.to_convert_cart())
+                .map(|(s, order)| (Box::new(s) as Box<OrderService>, order))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e)))
+                .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
         )
     }
 

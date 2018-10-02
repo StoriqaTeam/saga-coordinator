@@ -27,7 +27,8 @@ use self::routes::Route;
 use config::Config;
 use errors::Error;
 use models::{
-    BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
+    BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile,
+    UpdateStatePayload,
 };
 use services::account::{AccountService, AccountServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
@@ -154,6 +155,17 @@ impl Controller for ControllerImpl {
                             .create(new_order)
                             .map(|(_, user)| user)
                             .map_err(|(_, e)| FailureError::from(e.context("Error during order creation occured.")))
+                    }),
+            ),
+
+            (&Method::Post, Some(Route::BuyNow)) => serialize_future(
+                parse_body::<BuyNow>(req.body())
+                    .map_err(|e| FailureError::from(e.context("Parsing body // POST /buy_now in BuyNow failed!").context(Error::Parse)))
+                    .and_then(move |new_buy_now| {
+                        order_service
+                            .create_buy_now(new_buy_now)
+                            .map(|(_, invoice)| invoice)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation from buy now data occured.")))
                     }),
             ),
 
