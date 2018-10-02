@@ -10,6 +10,7 @@ pub enum Route {
     ResetPasswordApply,
     CreateStore,
     CreateOrder,
+    BuyNow,
     OrdersUpdateStateByBilling,
     OrdersManualSetState { order_slug: OrderSlug },
 }
@@ -30,6 +31,8 @@ pub fn create_route_parser() -> RouteParser<Route> {
     router.add_route(r"^/create_store$", || Route::CreateStore);
 
     router.add_route(r"^/create_order$", || Route::CreateOrder);
+
+    router.add_route(r"^/buy_now$", || Route::BuyNow);
 
     router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);
 
