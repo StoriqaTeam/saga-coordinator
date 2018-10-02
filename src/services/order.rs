@@ -579,28 +579,35 @@ impl OrderServiceImpl {
         let mut orders_futures = vec![];
         for order in orders {
             if let Some(order) = order {
-                match &order.state {
-                    OrderState::Paid => {}
-                    _ => continue,
-                }
-                let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
-                let res = rpc_client
-                    .find_by_product_id(order.product)
-                    .and_then(move |stocks| {
-                        for stock in stocks {
-                            if stock.quantity.0 > 0 {
-                                let new_quantity = stock.quantity.0 - 1;
-                                rpc_client.set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity));
+                if order.state == OrderState::Paid {
+                    debug!("Updating warehouses stock with product id {}", order.product);
+                    let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
+                    let res = rpc_client
+                        .find_by_product_id(order.product)
+                        .and_then(move |stocks| {
+                            debug!("Updating warehouses stocks: {:?}", stocks);
+                            for stock in stocks {
+                                if stock.quantity.0 > 0 {
+                                    let new_quantity = stock.quantity.0 - 1;
+                                    debug!(
+                                        "New warehouses {} product {} quantity {}",
+                                        stock.warehouse_id, stock.product_id, new_quantity
+                                    );
+                                    rpc_client.set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity));
+                                }
                             }
-                        }
-                        Ok(())
-                    }).map_err(|e| {
-                        e.context("decrementing quantity in warehouses microservice failed.")
-                            .context(Error::RpcClient)
-                            .into()
-                    });
+                            Ok(())
+                        }).map_err(|e| {
+                            let err = e
+                                .context("decrementing quantity in warehouses microservice failed.")
+                                .context(Error::RpcClient)
+                                .into();
+                            error!("{}", err);
+                            err
+                        });
 
-                orders_futures.push(res);
+                    orders_futures.push(res);
+                }
             }
         }
 
