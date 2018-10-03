@@ -594,10 +594,14 @@ impl OrderServiceImpl {
                                         "New warehouses {} product {} quantity {}",
                                         stock.warehouse_id, stock.product_id, new_quantity
                                     );
-                                    rpc_client.set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity));
+                                    return Either::A(
+                                        rpc_client
+                                            .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
+                                            .map(|_| ()),
+                                    );
                                 }
                             }
-                            Ok(())
+                            Either::B(future::ok(()))
                         }).map_err(|e| {
                             let err = e
                                 .context("decrementing quantity in warehouses microservice failed.")
