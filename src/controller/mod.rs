@@ -18,6 +18,7 @@ use hyper::Method;
 use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_http::controller::Controller;
 use stq_http::controller::ControllerFuture;
+use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
 use stq_router::RouteParser;
@@ -30,6 +31,7 @@ use models::{
     BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile,
     UpdateStatePayload,
 };
+use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
 use services::store::{StoreService, StoreServiceImpl};
@@ -56,7 +58,7 @@ impl Controller for ControllerImpl {
         let order_service = OrderServiceImpl::new(http_client, config, user_id);
         let path = req.path().to_string();
 
-        match (&req.method().clone(), self.route_parser.test(req.path())) {
+        let fut = match (&req.method().clone(), self.route_parser.test(req.path())) {
             (&Method::Post, Some(Route::CreateAccount)) => serialize_future(
                 parse_body::<SagaCreateProfile>(req.body())
                     .map_err(|e| {
@@ -210,6 +212,14 @@ impl Controller for ControllerImpl {
                 ).context(Error::NotFound)
                 .into(),
             )),
-        }
+        }.map_err(|err| {
+            let wrapper = ErrorMessageWrapper::<Error>::from(&err);
+            if wrapper.inner.code == 500 {
+                log_and_capture_error(&err);
+            }
+            err
+        });
+
+        Box::new(fut)
     }
 }
