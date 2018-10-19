@@ -10,7 +10,7 @@ use hyper::Headers;
 use hyper::Method;
 use serde_json;
 
-use stq_api::orders::{Order, OrderClient};
+use stq_api::orders::{BuyNow, Order, OrderClient};
 use stq_api::rpc_client::RestApiClient;
 use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -20,7 +20,7 @@ use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
+use stq_types::{ConversionId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -88,6 +88,35 @@ impl OrderServiceImpl {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
+                Ok(res)
+            }).then(|res| match res {
+                Ok(orders) => Ok((self, orders)),
+                Err(e) => Err((self, e)),
+            })
+    }
+
+    fn buy_now(self, input: BuyNow) -> impl Future<Item = (Self, Vec<Order>), Error = (Self, FailureError)> {
+        // Create Order
+        debug!("Create order from buy_now input: {:?}", input);
+        let conversion_id = ConversionId::new();
+
+        let log = self.log.clone();
+        log.lock()
+            .unwrap()
+            .push(CreateOrderOperationStage::OrdersConvertCartStart(conversion_id));
+
+        let orders_url = self.config.service_url(StqService::Orders);
+        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
+        rpc_client
+            .create_buy_now(input, Some(conversion_id))
+            .map_err(|e| {
+                e.context("Create order from buy now data in orders microservice failed.")
+                    .context(Error::RpcClient)
+                    .into()
+            }).and_then(move |res| {
+                log.lock()
+                    .unwrap()
+                    .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
                 Ok(res)
             }).then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
@@ -430,6 +459,25 @@ impl OrderServiceImpl {
         })
     }
 
+    fn create_from_buy_now(self, input: BuyNow) -> impl Future<Item = (Self, Invoice), Error = (Self, FailureError)> {
+        self.buy_now(input.clone()).and_then(move |(s, orders)| {
+            let orders = orders.clone();
+            let create_invoice = CreateInvoice {
+                customer_id: input.customer_id,
+                orders: orders.clone(),
+                currency: input.currency,
+                saga_id: SagaId::new(),
+            };
+            s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
+                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                    .then(|res| match res {
+                        Ok((s, _)) => Ok((s, invoice)),
+                        Err((s, _)) => Ok((s, invoice)),
+                    })
+            })
+        })
+    }
+
     // Contains happy path for Order creation
     fn update_orders_happy(self, orders_info: BillingOrdersVec) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         self.update_orders(orders_info)
@@ -696,7 +744,7 @@ impl OrderService for OrderServiceImpl {
 
     fn create_buy_now(self, input: BuyNow) -> ServiceFuture<Box<OrderService>, Invoice> {
         Box::new(
-            self.create_happy(input.to_convert_cart())
+            self.create_from_buy_now(input)
                 .map(|(s, order)| (Box::new(s) as Box<OrderService>, order))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e)))
                 .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
