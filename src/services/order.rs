@@ -395,14 +395,13 @@ impl OrderServiceImpl {
         for order in orders {
             if let Some(order) = order {
                 let send_to_client = match order.state {
-                    OrderState::New => {
-                        Box::new(self.notify_user_create_order(order.customer, order.slug)) as Box<Future<Item = (), Error = FailureError>>
-                    }
-                    OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => {
+                    OrderState::New | OrderState::PaymentAwaited | OrderState::TransactionPending | OrderState::AmountExpired => {
                         Box::new(future::ok(())) as Box<Future<Item = (), Error = FailureError>>
                     }
-                    OrderState::Paid
-                    | OrderState::InProcessing
+                    OrderState::Paid => {
+                        Box::new(self.notify_user_create_order(order.customer, order.slug)) as Box<Future<Item = (), Error = FailureError>>
+                    }
+                    OrderState::InProcessing
                     | OrderState::Cancelled
                     | OrderState::Sent
                     | OrderState::Delivered
