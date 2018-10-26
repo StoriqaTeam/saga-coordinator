@@ -95,6 +95,55 @@ impl OrderServiceImpl {
             })
     }
 
+    fn convert_billing_order(self, order: Order) -> impl Future<Item = (Self, BillingOrder), Error = (Self, FailureError)> {
+        let mut headers = Headers::new();
+        headers.set(Authorization("1".to_string())); // only super admin can create invoice
+
+        let stores_url = self.config.service_url(StqService::Stores);
+        let client = self.http_client.clone();
+        let coupon_id = order.coupon_id.clone();
+
+        serde_json::to_string(&order)
+            .map_err(From::from)
+            .into_future()
+            .and_then(move |body| {
+                if let Some(coupon_id) = coupon_id {
+                    Either::A(
+                        client
+                            .request::<Option<Coupon>>(
+                                Method::Get,
+                                format!("{}/coupons/{}", stores_url, coupon_id),
+                                Some(body),
+                                Some(headers),
+                            ).map_err(|e| {
+                                e.context("Getting coupon in stores microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            }),
+                    )
+                } else {
+                    Either::B(future::ok(None))
+                }
+            }).and_then(|coupon| Ok(BillingOrder::new(order, coupon)))
+            .then(|res| match res {
+                Ok(billing_order) => Ok((self, billing_order)),
+                Err(e) => Err((self, e)),
+            })
+    }
+
+    fn create_billing_orders(self, input: Vec<Order>) -> impl Future<Item = (Self, Vec<BillingOrder>), Error = (Self, FailureError)> {
+        debug!("Converting in to billing orders");
+
+        let fut = iter_ok::<_, (Self, FailureError)>(input).fold((self, vec![]), move |(s, mut orders), order| {
+            s.convert_billing_order(order).and_then(|(s, res)| {
+                orders.push(res);
+                Ok((s, orders)) as Result<(Self, Vec<BillingOrder>), (Self, FailureError)>
+            })
+        });
+
+        fut
+    }
+
     fn buy_now(self, input: BuyNow) -> impl Future<Item = (Self, Vec<Order>), Error = (Self, FailureError)> {
         // Create Order
         debug!("Create order from buy_now input: {:?}", input);
@@ -441,39 +490,43 @@ impl OrderServiceImpl {
     // Contains happy path for Order creation
     fn create_happy(self, input: ConvertCart) -> impl Future<Item = (Self, Invoice), Error = (Self, FailureError)> {
         self.convert_cart(input.clone()).and_then(move |(s, orders)| {
-            let orders = orders.clone();
-            let create_invoice = CreateInvoice {
-                customer_id: input.customer_id,
-                orders: orders.clone(),
-                currency: input.currency,
-                saga_id: SagaId::new(),
-            };
-            s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
-                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
-                    .then(|res| match res {
-                        Ok((s, _)) => Ok((s, invoice)),
-                        Err((s, _)) => Ok((s, invoice)),
-                    })
-            })
+            s.create_billing_orders(orders.clone())
+                .and_then(move |(s, orders)| {
+                    let create_invoice = CreateInvoice {
+                        customer_id: input.customer_id,
+                        orders: orders.clone(),
+                        currency: input.currency,
+                        saga_id: SagaId::new(),
+                    };
+                    s.create_invoice(&create_invoice)
+                }).and_then(move |(s, invoice)| {
+                    s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                        .then(|res| match res {
+                            Ok((s, _)) => Ok((s, invoice)),
+                            Err((s, _)) => Ok((s, invoice)),
+                        })
+                })
         })
     }
 
     fn create_from_buy_now(self, input: BuyNow) -> impl Future<Item = (Self, Invoice), Error = (Self, FailureError)> {
         self.buy_now(input.clone()).and_then(move |(s, orders)| {
-            let orders = orders.clone();
-            let create_invoice = CreateInvoice {
-                customer_id: input.customer_id,
-                orders: orders.clone(),
-                currency: input.currency,
-                saga_id: SagaId::new(),
-            };
-            s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
-                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
-                    .then(|res| match res {
-                        Ok((s, _)) => Ok((s, invoice)),
-                        Err((s, _)) => Ok((s, invoice)),
-                    })
-            })
+            s.create_billing_orders(orders.clone())
+                .and_then(move |(s, orders)| {
+                    let create_invoice = CreateInvoice {
+                        customer_id: input.customer_id,
+                        orders: orders.clone(),
+                        currency: input.currency,
+                        saga_id: SagaId::new(),
+                    };
+                    s.create_invoice(&create_invoice)
+                }).and_then(move |(s, invoice)| {
+                    s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                        .then(|res| match res {
+                            Ok((s, _)) => Ok((s, invoice)),
+                            Err((s, _)) => Ok((s, invoice)),
+                        })
+                })
         })
     }
 

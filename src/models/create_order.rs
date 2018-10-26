@@ -40,7 +40,7 @@ pub struct ConvertCartRevert {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateInvoice {
-    pub orders: Vec<Order>,
+    pub orders: Vec<BillingOrder>,
     pub customer_id: UserId,
     pub saga_id: SagaId,
     pub currency: Currency,
@@ -54,6 +54,36 @@ impl fmt::Display for CreateInvoice {
             self.orders, self.customer_id, self.saga_id, self.currency
         )
     }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct BillingOrder {
+    pub id: OrderId,
+    #[serde(rename = "store")]
+    pub store_id: StoreId,
+    pub price: ProductPrice,
+    pub quantity: Quantity,
+    pub currency: Currency,
+    pub coupon: Option<Coupon>,
+}
+
+impl BillingOrder {
+    pub fn new(order: Order, coupon: Option<Coupon>) -> Self {
+        Self {
+            id: order.id,
+            store_id: order.store,
+            price: order.price,
+            quantity: order.quantity,
+            currency: order.currency,
+            coupon,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct Coupon {
+    pub id: CouponId,
+    pub percent: i32,
 }
 
 pub type CartProductWithPriceHash = HashMap<ProductId, ProductSellerPrice>;
