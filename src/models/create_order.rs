@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::time::SystemTime;
 
-use stq_api::orders::{AddressFull, Order};
+use stq_api::orders::{AddressFull, CouponInfo, Order};
 use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
@@ -15,6 +15,7 @@ pub struct ConvertCart {
     pub receiver_phone: String,
     pub prices: CartProductWithPriceHash,
     pub currency: Currency,
+    pub coupons: HashMap<CouponId, CouponInfo>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -40,7 +41,7 @@ pub struct ConvertCartRevert {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateInvoice {
-    pub orders: Vec<BillingOrder>,
+    pub orders: Vec<Order>,
     pub customer_id: UserId,
     pub saga_id: SagaId,
     pub currency: Currency,
@@ -54,36 +55,6 @@ impl fmt::Display for CreateInvoice {
             self.orders, self.customer_id, self.saga_id, self.currency
         )
     }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct BillingOrder {
-    pub id: OrderId,
-    #[serde(rename = "store")]
-    pub store_id: StoreId,
-    pub price: ProductPrice,
-    pub quantity: Quantity,
-    pub currency: Currency,
-    pub coupon: Option<Coupon>,
-}
-
-impl BillingOrder {
-    pub fn new(order: Order, coupon: Option<Coupon>) -> Self {
-        Self {
-            id: order.id,
-            store_id: order.store,
-            price: order.price,
-            quantity: order.quantity,
-            currency: order.currency,
-            coupon,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct Coupon {
-    pub id: CouponId,
-    pub percent: i32,
 }
 
 pub type CartProductWithPriceHash = HashMap<ProductId, ProductSellerPrice>;
@@ -182,4 +153,10 @@ pub struct Invoice {
 pub struct Transaction {
     pub id: String,
     pub amount_captured: ProductPrice,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct UsedCoupon {
+    pub coupon_id: CouponId,
+    pub user_id: UserId,
 }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
@@ -20,7 +21,7 @@ use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{ConversionId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
+use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -80,6 +81,7 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.address,
                 convert_cart.convert_cart.receiver_name,
                 convert_cart.convert_cart.receiver_phone,
+                convert_cart.convert_cart.coupons,
             ).map_err(|e| {
                 e.context("Converting cart in orders microservice failed.")
                     .context(Error::RpcClient)
@@ -95,49 +97,47 @@ impl OrderServiceImpl {
             })
     }
 
-    fn convert_billing_order(self, order: Order) -> impl Future<Item = (Self, BillingOrder), Error = (Self, FailureError)> {
+    fn commit_coupon(self, payload: (CouponId, UserId)) -> impl Future<Item = (Self, UsedCoupon), Error = (Self, FailureError)> {
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can create invoice
 
         let stores_url = self.config.service_url(StqService::Stores);
         let client = self.http_client.clone();
-        let coupon_id = order.coupon_id.clone();
+        let (coupon_id, customer) = payload;
 
-        serde_json::to_string(&order)
-            .map_err(From::from)
-            .into_future()
-            .and_then(move |body| {
-                if let Some(coupon_id) = coupon_id {
-                    Either::A(
-                        client
-                            .request::<Option<Coupon>>(
-                                Method::Get,
-                                format!("{}/coupons/{}", stores_url, coupon_id),
-                                Some(body),
-                                Some(headers),
-                            ).map_err(|e| {
-                                e.context("Getting coupon in stores microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            }),
-                    )
-                } else {
-                    Either::B(future::ok(None))
-                }
-            }).and_then(|coupon| Ok(BillingOrder::new(order, coupon)))
-            .then(|res| match res {
-                Ok(billing_order) => Ok((self, billing_order)),
+        client
+            .request::<UsedCoupon>(
+                Method::Get,
+                format!("{}/coupons/{}/users/{}", stores_url, coupon_id, customer),
+                None,
+                Some(headers),
+            ).map_err(|e| {
+                e.context("Commit coupon for user in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }).then(|res| match res {
+                Ok(used_coupon) => Ok((self, used_coupon)),
                 Err(e) => Err((self, e)),
             })
     }
 
-    fn create_billing_orders(self, input: Vec<Order>) -> impl Future<Item = (Self, Vec<BillingOrder>), Error = (Self, FailureError)> {
-        debug!("Converting in to billing orders");
+    fn commit_coupons(self, input: Vec<Order>) -> impl Future<Item = (Self, Vec<UsedCoupon>), Error = (Self, FailureError)> {
+        debug!("Commit coupons");
 
-        let fut = iter_ok::<_, (Self, FailureError)>(input).fold((self, vec![]), move |(s, mut orders), order| {
-            s.convert_billing_order(order).and_then(|(s, res)| {
-                orders.push(res);
-                Ok((s, orders)) as Result<(Self, Vec<BillingOrder>), (Self, FailureError)>
+        let mut payload = vec![];
+        for order in input {
+            if let Some(coupon_id) = order.coupon_id {
+                payload.push((coupon_id, order.customer));
+            }
+        }
+
+        let payload = payload.into_iter().collect::<HashMap<CouponId, UserId>>();
+
+        let fut = iter_ok::<_, (Self, FailureError)>(payload).fold((self, vec![]), move |(s, mut used_coupons), order| {
+            s.commit_coupon(order).and_then(|(s, res)| {
+                used_coupons.push(res);
+
+                Ok((s, used_coupons)) as Result<(Self, Vec<UsedCoupon>), (Self, FailureError)>
             })
         });
 
@@ -490,43 +490,39 @@ impl OrderServiceImpl {
     // Contains happy path for Order creation
     fn create_happy(self, input: ConvertCart) -> impl Future<Item = (Self, Invoice), Error = (Self, FailureError)> {
         self.convert_cart(input.clone()).and_then(move |(s, orders)| {
-            s.create_billing_orders(orders.clone())
-                .and_then(move |(s, orders)| {
-                    let create_invoice = CreateInvoice {
-                        customer_id: input.customer_id,
-                        orders: orders.clone(),
-                        currency: input.currency,
-                        saga_id: SagaId::new(),
-                    };
-                    s.create_invoice(&create_invoice)
-                }).and_then(move |(s, invoice)| {
+            let create_invoice = CreateInvoice {
+                customer_id: input.customer_id,
+                orders: orders.clone(),
+                currency: input.currency,
+                saga_id: SagaId::new(),
+            };
+            s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
+                s.commit_coupons(orders.clone()).and_then(move |(s, _)| {
                     s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
                         .then(|res| match res {
                             Ok((s, _)) => Ok((s, invoice)),
                             Err((s, _)) => Ok((s, invoice)),
                         })
                 })
+            })
         })
     }
 
     fn create_from_buy_now(self, input: BuyNow) -> impl Future<Item = (Self, Invoice), Error = (Self, FailureError)> {
         self.buy_now(input.clone()).and_then(move |(s, orders)| {
-            s.create_billing_orders(orders.clone())
-                .and_then(move |(s, orders)| {
-                    let create_invoice = CreateInvoice {
-                        customer_id: input.customer_id,
-                        orders: orders.clone(),
-                        currency: input.currency,
-                        saga_id: SagaId::new(),
-                    };
-                    s.create_invoice(&create_invoice)
-                }).and_then(move |(s, invoice)| {
-                    s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
-                        .then(|res| match res {
-                            Ok((s, _)) => Ok((s, invoice)),
-                            Err((s, _)) => Ok((s, invoice)),
-                        })
-                })
+            let create_invoice = CreateInvoice {
+                customer_id: input.customer_id,
+                orders: orders.clone(),
+                currency: input.currency,
+                saga_id: SagaId::new(),
+            };
+            s.create_invoice(&create_invoice).and_then(move |(s, invoice)| {
+                s.notify(&orders.into_iter().map(Some).collect::<Vec<Option<Order>>>())
+                    .then(|res| match res {
+                        Ok((s, _)) => Ok((s, invoice)),
+                        Err((s, _)) => Ok((s, invoice)),
+                    })
+            })
         })
     }
 
