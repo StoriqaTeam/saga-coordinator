@@ -630,23 +630,26 @@ impl OrderServiceImpl {
                 if order.state == OrderState::Paid {
                     debug!("Updating warehouses stock with product id {}", order.product);
                     let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
+                    let order_quantity = order.quantity;
                     let res = rpc_client
                         .find_by_product_id(order.product)
                         .and_then(move |stocks| {
                             debug!("Updating warehouses stocks: {:?}", stocks);
                             for stock in stocks {
-                                if stock.quantity.0 > 0 {
-                                    let new_quantity = stock.quantity.0 - 1;
-                                    debug!(
-                                        "New warehouses {} product {} quantity {}",
-                                        stock.warehouse_id, stock.product_id, new_quantity
-                                    );
-                                    return Either::A(
-                                        rpc_client
-                                            .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
-                                            .map(|_| ()),
-                                    );
-                                }
+                                let new_quantity = if stock.quantity.0 > order_quantity.0 {
+                                    stock.quantity.0 - order_quantity.0
+                                } else {
+                                    0
+                                };
+                                debug!(
+                                    "New warehouses {} product {} quantity {}",
+                                    stock.warehouse_id, stock.product_id, new_quantity
+                                );
+                                return Either::A(
+                                    rpc_client
+                                        .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
+                                        .map(|_| ()),
+                                );
                             }
                             Either::B(future::ok(()))
                         }).map_err(|e| {
