@@ -642,8 +642,13 @@ impl OrderServiceImpl {
                 if let Some(order) = order {
                     Either::A(if order.state == order_state {
                         // if this status already set, do not update
+                        info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
                         Either::A(future::ok(None))
                     } else {
+                        info!(
+                            "order slug: {:?} status: {:?} start request update on orders",
+                            order_slug, order_state
+                        );
                         Either::B(
                             rpc_client
                                 .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
