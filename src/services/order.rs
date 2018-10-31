@@ -64,7 +64,7 @@ impl OrderServiceImpl {
     fn convert_cart(self, input: ConvertCart) -> impl Future<Item = (Self, Vec<Order>), Error = (Self, FailureError)> {
         // Create Order
         debug!("Converting cart, input: {:?}", input);
-        let convert_cart: ConvertCartWithConversionId = input.clone().into();
+        let convert_cart: ConvertCartWithConversionId = input.into();
         let convertion_id = convert_cart.conversion_id;
         let log = self.log.clone();
         log.lock()
@@ -73,34 +73,20 @@ impl OrderServiceImpl {
 
         let orders_url = self.config.service_url(StqService::Orders);
         let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-
-        self.get_user_by_id(input.customer_id)
-            .and_then(|user| {
-                if let Some(user) = user {
-                    future::ok(user)
-                } else {
-                    future::err(
-                        format_err!("User is not found in users microservice.")
-                            .context(Error::NotFound)
-                            .into(),
-                    )
-                }
-            }).and_then(move |user| {
-                rpc_client
-                    .convert_cart(
-                        Some(convert_cart.conversion_id),
-                        convert_cart.convert_cart.customer_id,
-                        convert_cart.convert_cart.prices,
-                        convert_cart.convert_cart.address,
-                        convert_cart.convert_cart.receiver_name,
-                        convert_cart.convert_cart.receiver_phone,
-                        user.email,
-                        convert_cart.convert_cart.coupons,
-                    ).map_err(|e| {
-                        e.context("Converting cart in orders microservice failed.")
-                            .context(Error::RpcClient)
-                            .into()
-                    })
+        rpc_client
+            .convert_cart(
+                Some(convert_cart.conversion_id),
+                convert_cart.convert_cart.customer_id,
+                convert_cart.convert_cart.prices,
+                convert_cart.convert_cart.address,
+                convert_cart.convert_cart.receiver_name,
+                convert_cart.convert_cart.receiver_phone,
+                convert_cart.convert_cart.receiver_email,
+                convert_cart.convert_cart.coupons,
+            ).map_err(|e| {
+                e.context("Converting cart in orders microservice failed.")
+                    .context(Error::RpcClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -793,17 +779,6 @@ impl OrderServiceImpl {
             Ok(_) => Ok((self, ())),
             Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
         })
-    }
-
-    fn get_user_by_id(&self, user_id: UserId) -> impl Future<Item = Option<User>, Error = FailureError> {
-        let client = self.http_client.clone();
-        let users_url = self.config.service_url(StqService::Users);
-        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
-        let mut headers = Headers::new();
-        headers.set(Authorization(user_id.to_string()));
-        client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
     }
 }
 
