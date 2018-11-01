@@ -81,6 +81,7 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.address,
                 convert_cart.convert_cart.receiver_name,
                 convert_cart.convert_cart.receiver_phone,
+                convert_cart.convert_cart.receiver_email,
                 convert_cart.convert_cart.coupons,
             ).map_err(|e| {
                 e.context("Converting cart in orders microservice failed.")

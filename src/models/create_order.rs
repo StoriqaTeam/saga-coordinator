@@ -13,6 +13,7 @@ pub struct ConvertCart {
     pub address: AddressFull,
     pub receiver_name: String,
     pub receiver_phone: String,
+    pub receiver_email: String,
     pub prices: CartProductWithPriceHash,
     pub currency: Currency,
     pub coupons: HashMap<CouponId, CouponInfo>,
