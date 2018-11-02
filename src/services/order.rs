@@ -83,6 +83,7 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.receiver_phone,
                 convert_cart.convert_cart.receiver_email,
                 convert_cart.convert_cart.coupons,
+                convert_cart.convert_cart.delivery_info,
             ).map_err(|e| {
                 e.context("Converting cart in orders microservice failed.")
                     .context(Error::RpcClient)
