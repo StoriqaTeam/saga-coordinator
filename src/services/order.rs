@@ -102,6 +102,7 @@ impl OrderServiceImpl {
     fn commit_coupon(self, payload: (CouponId, UserId)) -> impl Future<Item = (Self, UsedCoupon), Error = (Self, FailureError)> {
         let mut headers = Headers::new();
         headers.set(Authorization("1".to_string())); // only super admin can create invoice
+        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
 
         let stores_url = self.config.service_url(StqService::Stores);
         let client = self.http_client.clone();
