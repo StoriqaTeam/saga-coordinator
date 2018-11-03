@@ -110,7 +110,7 @@ impl OrderServiceImpl {
 
         client
             .request::<UsedCoupon>(
-                Method::Get,
+                Method::Post,
                 format!("{}/coupons/{}/users/{}", stores_url, coupon_id, customer),
                 None,
                 Some(headers),
