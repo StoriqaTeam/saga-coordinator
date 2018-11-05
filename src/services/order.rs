@@ -85,8 +85,8 @@ impl OrderServiceImpl {
                 convert_cart.convert_cart.coupons,
                 convert_cart.convert_cart.delivery_info,
             ).map_err(|e| {
-                e.context("Converting cart in orders microservice failed.")
-                    .context(Error::RpcClient)
+                parse_validation_errors(e.into(), &["order"])
+                    .context("Converting cart in orders microservice failed.")
                     .into()
             }).and_then(move |res| {
                 log.lock()
@@ -162,8 +162,8 @@ impl OrderServiceImpl {
         rpc_client
             .create_buy_now(input, Some(conversion_id))
             .map_err(|e| {
-                e.context("Create order from buy now data in orders microservice failed.")
-                    .context(Error::RpcClient)
+                parse_validation_errors(e.into(), &["order"])
+                    .context("Create order from buy now data in orders microservice failed.")
                     .into()
             }).and_then(move |res| {
                 log.lock()
@@ -638,8 +638,8 @@ impl OrderServiceImpl {
         rpc_client
             .get_order(OrderIdentifier::Slug(order_slug))
             .map_err(move |e| {
-                e.context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
-                    .context(Error::RpcClient)
+                parse_validation_errors(e.into(), &["order"])
+                    .context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
                     .into()
             }).and_then(move |order| {
                 if let Some(order) = order {
@@ -656,11 +656,11 @@ impl OrderServiceImpl {
                             rpc_client
                                 .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
                                 .map_err(move |e| {
-                                    e.context(format!(
-                                        "Setting order with slug {} state {} in orders microservice failed.",
-                                        order_slug, order_state
-                                    )).context(Error::RpcClient)
-                                    .into()
+                                    parse_validation_errors(e.into(), &["order"])
+                                        .context(format!(
+                                            "Setting order with slug {} state {} in orders microservice failed.",
+                                            order_slug, order_state
+                                        )).into()
                                 }),
                         )
                     })
