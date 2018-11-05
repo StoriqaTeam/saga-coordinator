@@ -2,6 +2,7 @@ use hyper::StatusCode;
 use serde_json;
 use validator::ValidationErrors;
 
+use stq_api::errors::Error as ApiError;
 use stq_http::errors::{Codeable, PayloadCarrier};
 
 #[derive(Debug, Fail)]
@@ -20,6 +21,15 @@ pub enum Error {
     Forbidden,
     #[fail(display = "Unknown server error")]
     Unknown,
+}
+
+impl From<ApiError> for Error {
+    fn from(api_error: ApiError) -> Error {
+        match api_error {
+            ApiError::Api(status_code, ref _err_msg) if status_code.as_u16() == StatusCode::Forbidden.as_u16() => Error::Forbidden,
+            _ => Error::RpcClient,
+        }
+    }
 }
 
 impl Codeable for Error {
