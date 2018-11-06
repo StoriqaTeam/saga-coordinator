@@ -31,6 +31,8 @@ mod macros;
 pub mod config;
 mod controller;
 mod errors;
+mod http;
+mod microservice;
 mod models;
 pub mod sentry_integration;
 mod services;

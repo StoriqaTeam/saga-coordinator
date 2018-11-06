@@ -12,6 +12,7 @@ use failure::Fail;
 use futures::future;
 use futures::prelude::*;
 use hyper::header::Authorization;
+use hyper::header::Headers;
 use hyper::server::Request;
 use hyper::Method;
 
@@ -28,6 +29,8 @@ use stq_types::UserId;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
+use http::{HttpClient, HttpClientWithDefaultHeaders};
+use microservice::OrdersMicroserviceImpl;
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
 };
@@ -52,10 +55,16 @@ impl Controller for ControllerImpl {
             .map(UserId);
 
         let http_client = self.http_client.clone();
+
+        let http_client_with_default_headers = http_client_with_default_headers(self.http_client.clone(), &headers, user_id);
+
+        let orders_microservice = OrdersMicroserviceImpl::new(http_client_with_default_headers, self.config.clone());
+
         let config = self.config.clone();
+
         let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
         let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
-        let order_service = OrderServiceImpl::new(http_client, config, user_id);
+        let order_service = OrderServiceImpl::new(http_client, config, user_id, Box::new(orders_microservice));
         let path = req.path().to_string();
 
         let fut = match (&req.method().clone(), self.route_parser.test(req.path())) {
@@ -222,4 +231,17 @@ impl Controller for ControllerImpl {
 
         Box::new(fut)
     }
+}
+
+fn default_headers(headers: &Headers, user: Option<UserId>) -> Headers {
+    let mut enriched_headers = Headers::new();
+    if let Some(user_id) = user {
+        enriched_headers.set(Authorization(user_id.to_string()));
+    }
+    //todo sessionId
+    enriched_headers
+}
+
+fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: &Headers, user: Option<UserId>) -> Box<HttpClient> {
+    Box::new(HttpClientWithDefaultHeaders::new(client_handle, default_headers(headers, user)))
 }

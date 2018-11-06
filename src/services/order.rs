@@ -11,7 +11,7 @@ use hyper::Headers;
 use hyper::Method;
 use serde_json;
 
-use stq_api::orders::{BuyNow, Order, OrderClient};
+use stq_api::orders::{BuyNow, Order};
 use stq_api::rpc_client::RestApiClient;
 use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
@@ -26,6 +26,7 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
+use microservice::OrdersMicroservice;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -45,19 +46,26 @@ pub trait OrderService {
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
     pub http_client: HttpClientHandle,
+    pub orders_microservice: Box<OrdersMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
-    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
+    pub fn new(
+        http_client: HttpClientHandle,
+        config: config::Config,
+        user_id: Option<UserId>,
+        orders_microservice: Box<OrdersMicroservice>,
+    ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
             http_client,
             config,
             log,
             user_id,
+            orders_microservice,
         }
     }
 
@@ -71,9 +79,7 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-        rpc_client
+        self.orders_microservice
             .convert_cart(
                 Some(convert_cart.conversion_id),
                 convert_cart.convert_cart.customer_id,
@@ -157,9 +163,7 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::OrdersConvertCartStart(conversion_id));
 
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-        rpc_client
+        self.orders_microservice
             .create_buy_now(input, Some(conversion_id))
             .map_err(|e| {
                 parse_validation_errors(e.into(), &["order"])
@@ -632,10 +636,8 @@ impl OrderServiceImpl {
         track_id: Option<String>,
         comment: Option<String>,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-
-        rpc_client
+        let orders_microservice = self.orders_microservice.cloned();
+        self.orders_microservice
             .get_order(OrderIdentifier::Slug(order_slug))
             .map_err(move |e| {
                 parse_validation_errors(e.into(), &["order"])
@@ -653,7 +655,7 @@ impl OrderServiceImpl {
                             order_slug, order_state
                         );
                         Either::B(
-                            rpc_client
+                            orders_microservice
                                 .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
                                 .map_err(move |e| {
                                     parse_validation_errors(e.into(), &["order"])
