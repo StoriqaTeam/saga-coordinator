@@ -569,55 +569,48 @@ impl OrderServiceImpl {
     fn update_orders(self, orders_info: BillingOrdersVec) -> impl Future<Item = (Self, Vec<Option<Order>>), Error = (Self, FailureError)> {
         debug!("Updating orders status: {}", orders_info);
 
-        let client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
-
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
             match &order_info.status {
                 OrderState::AmountExpired | OrderState::TransactionPending => continue, // do not set these invoice statuses to orders
                 _ => {}
             }
-            let payload: UpdateStatePayload = order_info.clone().into();
-            let body = serde_json::to_string(&payload).unwrap_or_default();
-            let url = format!("{}/{}/by-id/{}", orders_url.clone(), StqModel::Order.to_url(), order_info.order_id);
-            let mut headers = Headers::new();
-            headers.set(Authorization(order_info.customer_id.0.to_string()));
-            let res = client
-                .request::<Option<Order>>(Method::Get, url, None, Some(headers))
+
+            let orders_microservice = self.orders_microservice.cloned();
+
+            let order_id = order_info.order_id;
+
+            let res = self
+                .orders_microservice
+                .with_user(order_info.customer_id)
+                .get_order(OrderIdentifier::Id(order_info.order_id))
                 .map_err(|e| {
                     e.context("Setting new status in orders microservice error occured.")
                         .context(Error::HttpClient)
                         .into()
-                }).and_then({
-                    let client = client.clone();
-                    let orders_url = orders_url.clone();
-                    move |order| {
-                        if let Some(order) = order {
-                            Either::A(if order.state == order_info.status {
-                                // if this status already set, do not update
-                                Either::A(future::ok(None))
-                            } else {
-                                let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order.id);
-                                let mut headers = Headers::new();
-                                headers.set(Authorization("1".to_string()));
-                                Either::B(
-                                    client
-                                        .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
-                                        .map_err(|e| {
-                                            e.context("Setting new status in orders microservice error occured.")
-                                                .context(Error::HttpClient)
-                                                .into()
-                                        }),
-                                )
-                            })
-                        } else {
-                            Either::B(future::err(
-                                format_err!("Order is not found in orders microservice! id: {}", order_info.order_id.0)
-                                    .context(Error::NotFound)
-                                    .into(),
-                            ))
-                        }
+                }).and_then(move |order| {
+                    order
+                        .ok_or(
+                            format_err!("Order is not found in orders microservice! id: {}", order_id)
+                                .context(Error::NotFound)
+                                .into(),
+                        ).into_future()
+                }).and_then(move |order| {
+                    if order.state == order_info.status {
+                        // if this status already set, do not update
+                        Either::A(future::ok(None))
+                    } else {
+                        let payload: UpdateStatePayload = order_info.clone().into();
+                        Either::B(
+                            orders_microservice
+                                .with_superadmin()
+                                .set_order_state(OrderIdentifier::Id(order.id), payload)
+                                .map_err(|e| {
+                                    e.context("Setting new status in orders microservice error occured.")
+                                        .context(Error::HttpClient)
+                                        .into()
+                                }),
+                        )
                     }
                 });
             orders_futures.push(res);
@@ -656,8 +649,14 @@ impl OrderServiceImpl {
                         );
                         Either::B(
                             orders_microservice
-                                .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
-                                .map_err(move |e| {
+                                .set_order_state(
+                                    OrderIdentifier::Slug(order_slug),
+                                    UpdateStatePayload {
+                                        state: order_state,
+                                        comment,
+                                        track_id,
+                                    },
+                                ).map_err(move |e| {
                                     parse_validation_errors(e.into(), &["order"])
                                         .context(format!(
                                             "Setting order with slug {} state {} in orders microservice failed.",
@@ -735,28 +734,18 @@ impl OrderServiceImpl {
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
         let http_client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
+        let orders_microservice = self.orders_microservice.cloned();
         let billing_url = self.config.service_url(StqService::Billing);
 
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
                 CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
                     debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin can revert orders
+                    let result = orders_microservice
+                        .with_superadmin()
+                        .revert_convert_cart(ConvertCartRevert { conversion_id });
 
-                    let payload = ConvertCartRevert { conversion_id };
-                    let body = serde_json::to_string(&payload).unwrap_or_default();
-
-                    Box::new(
-                        http_client
-                            .request::<CartHash>(
-                                Method::Post,
-                                format!("{}/{}/create_from_cart/revert", orders_url, StqModel::Order.to_url()),
-                                Some(body),
-                                Some(headers),
-                            ).then(|_| Ok(())),
-                    ) as Box<Future<Item = (), Error = ()>>
+                    Box::new(result.then(|_| Ok(()))) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {

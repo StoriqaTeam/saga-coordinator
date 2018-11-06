@@ -238,7 +238,7 @@ fn default_headers(headers: &Headers, user: Option<UserId>) -> Headers {
     if let Some(user_id) = user {
         enriched_headers.set(Authorization(user_id.to_string()));
     }
-    //todo sessionId
+    //todo add sessionId
     enriched_headers
 }
 

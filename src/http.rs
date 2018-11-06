@@ -68,9 +68,10 @@ impl<S: HttpClient> HttpClient for HttpClientWithDefaultHeaders<S> {
         body: Option<String>,
         headers: Option<Headers>,
     ) -> Box<Future<Item = Response, Error = Error> + Send> {
-        let headers = if let Some(mut headers) = headers {
-            headers.extend(self.headers.iter());
-            Some(headers)
+        let headers = if let Some(headers) = headers {
+            let mut existing_headers = self.headers.clone();
+            existing_headers.extend(headers.iter());
+            Some(existing_headers)
         } else {
             Some(self.headers.clone())
         };

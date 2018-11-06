@@ -1,25 +1,26 @@
 use std::collections::HashMap;
 
 use futures::{Future, IntoFuture};
-use hyper::header::Headers;
+use hyper::header::{Authorization, Headers};
 use hyper::Method;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
 
-use stq_api::orders::*;
+use stq_api::orders::{AddressFull, BuyNow, CouponInfo, DeliveryInfo, Order};
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
-use stq_static_resources::OrderState;
 use stq_types::*;
 
 use super::ApiFuture;
 
 use config;
-use http::HttpClient;
+use http::{HttpClient, HttpClientWithDefaultHeaders};
+use models::*;
 
 pub trait OrdersMicroservice {
     fn cloned(&self) -> Box<OrdersMicroservice>;
-    fn superadmin(&self) -> Box<OrdersMicroservice>;
+    fn with_superadmin(&self) -> Box<OrdersMicroservice>;
+    fn with_user(&self, user: UserId) -> Box<OrdersMicroservice>;
     fn convert_cart(
         &self,
         conversion_id: Option<ConversionId>,
@@ -33,14 +34,9 @@ pub trait OrdersMicroservice {
         delivery_info: HashMap<ProductId, DeliveryInfo>,
     ) -> ApiFuture<Vec<Order>>;
     fn get_order(&self, order_id: OrderIdentifier) -> ApiFuture<Option<Order>>;
-    fn set_order_state(
-        &self,
-        order_id: OrderIdentifier,
-        state: OrderState,
-        comment: Option<String>,
-        track_id: Option<String>,
-    ) -> ApiFuture<Option<Order>>;
+    fn set_order_state(&self, order_id: OrderIdentifier, payload: UpdateStatePayload) -> ApiFuture<Option<Order>>;
     fn create_buy_now(&self, buy_now: BuyNow, conversion_id: Option<ConversionId>) -> ApiFuture<Vec<Order>>;
+    fn revert_convert_cart(&self, payload: ConvertCartRevert) -> ApiFuture<CartHash>;
 }
 
 pub struct OrdersMicroserviceImpl {
@@ -60,13 +56,6 @@ pub struct ConvertCartPayload {
     pub seller_prices: HashMap<ProductId, ProductSellerPrice>,
     pub coupons: HashMap<CouponId, CouponInfo>,
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct UpdateStatePayload {
-    pub state: OrderState,
-    pub track_id: Option<String>,
-    pub comment: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -103,6 +92,10 @@ impl OrdersMicroserviceImpl {
             .and_then(|response| response.parse::<S>().into_future());
         Box::new(result)
     }
+
+    fn orders_url(&self) -> String {
+        self.config.service_url(StqService::Orders)
+    }
 }
 
 impl OrdersMicroservice for OrdersMicroserviceImpl {
@@ -113,9 +106,21 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
         })
     }
 
-    fn superadmin(&self) -> Box<OrdersMicroservice> {
+    fn with_superadmin(&self) -> Box<OrdersMicroservice> {
         Box::new(OrdersMicroserviceImpl {
             http_client: self.http_client.superadmin(),
+            config: self.config.clone(),
+        })
+    }
+
+    fn with_user(&self, user: UserId) -> Box<OrdersMicroservice> {
+        let mut headers = Headers::new();
+        headers.set(Authorization(user.0.to_string()));
+
+        let http_client = HttpClientWithDefaultHeaders::new(self.http_client.cloned(), headers);
+
+        Box::new(OrdersMicroserviceImpl {
+            http_client: Box::new(http_client),
             config: self.config.clone(),
         })
     }
@@ -132,8 +137,7 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
         coupons: HashMap<CouponId, CouponInfo>,
         delivery_info: HashMap<ProductId, DeliveryInfo>,
     ) -> ApiFuture<Vec<Order>> {
-        let orders_url = self.config.service_url(StqService::Orders);
-        let url = format!("{}/{}/create_from_cart", orders_url, StqModel::Order.to_url());
+        let url = format!("{}/{}/create_from_cart", self.orders_url(), StqModel::Order.to_url());
         self.request::<_, Vec<Order>>(
             Method::Post,
             url,
@@ -153,35 +157,37 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
     }
 
     fn get_order(&self, order_id: OrderIdentifier) -> ApiFuture<Option<Order>> {
-        let orders_url = self.config.service_url(StqService::Orders);
-        let url = format!("{}/{}/{}", orders_url, StqModel::Order.to_url(), order_identifier_route(&order_id),);
-
-        self.request::<(), Option<Order>>(Method::Get, url, None, None)
-    }
-
-    fn set_order_state(
-        &self,
-        order_id: OrderIdentifier,
-        state: OrderState,
-        comment: Option<String>,
-        track_id: Option<String>,
-    ) -> ApiFuture<Option<Order>> {
-        let orders_url = self.config.service_url(StqService::Orders);
         let url = format!(
-            "{}/{}/status/{}",
-            orders_url,
+            "{}/{}/{}",
+            self.orders_url(),
             StqModel::Order.to_url(),
             order_identifier_route(&order_id),
         );
 
-        self.request::<_, Option<Order>>(Method::Put, url, Some(UpdateStatePayload { state, comment, track_id }), None)
+        self.request::<(), Option<Order>>(Method::Get, url, None, None)
+    }
+
+    fn set_order_state(&self, order_id: OrderIdentifier, payload: UpdateStatePayload) -> ApiFuture<Option<Order>> {
+        let url = format!(
+            "{}/{}/status/{}",
+            self.orders_url(),
+            StqModel::Order.to_url(),
+            order_identifier_route(&order_id),
+        );
+
+        self.request::<_, Option<Order>>(Method::Put, url, Some(payload), None)
     }
 
     fn create_buy_now(&self, buy_now: BuyNow, conversion_id: Option<ConversionId>) -> ApiFuture<Vec<Order>> {
-        let orders_url = self.config.service_url(StqService::Orders);
-        let url = format!("{}/{}/create_buy_now", orders_url, StqModel::Order.to_url(),);
+        let url = format!("{}/{}/create_buy_now", self.orders_url(), StqModel::Order.to_url(),);
 
         self.request::<_, Vec<Order>>(Method::Post, url, Some(BuyNowPayload { conversion_id, buy_now }), None)
+    }
+
+    fn revert_convert_cart(&self, payload: ConvertCartRevert) -> ApiFuture<CartHash> {
+        let url = format!("{}/{}/create_buy_now/revert", self.orders_url(), StqModel::Order.to_url(),);
+
+        self.request::<_, CartHash>(Method::Post, url, Some(payload), None)
     }
 }
 
