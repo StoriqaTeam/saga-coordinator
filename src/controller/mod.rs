@@ -23,6 +23,7 @@ use stq_http::controller::ControllerFuture;
 use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
+use stq_http::request_util::Currency as CurrencyHeader;
 use stq_router::RouteParser;
 use stq_types::UserId;
 
@@ -30,7 +31,7 @@ use self::routes::Route;
 use config::Config;
 use errors::Error;
 use http::{HttpClient, HttpClientWithDefaultHeaders};
-use microservice::OrdersMicroserviceImpl;
+use microservice::{OrdersMicroserviceImpl, StoresMicroserviceImpl};
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
 };
@@ -56,15 +57,27 @@ impl Controller for ControllerImpl {
 
         let http_client = self.http_client.clone();
 
-        let http_client_with_default_headers = http_client_with_default_headers(self.http_client.clone(), &headers, user_id);
+        let orders_microservice = OrdersMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), orders_headers(&headers)),
+            self.config.clone(),
+        );
 
-        let orders_microservice = OrdersMicroserviceImpl::new(http_client_with_default_headers, self.config.clone());
+        let stores_microservice = StoresMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), stores_headers(&headers)),
+            self.config.clone(),
+        );
 
         let config = self.config.clone();
 
         let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
         let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
-        let order_service = OrderServiceImpl::new(http_client, config, user_id, Box::new(orders_microservice));
+        let order_service = OrderServiceImpl::new(
+            http_client,
+            config,
+            user_id,
+            Box::new(orders_microservice),
+            Box::new(stores_microservice),
+        );
         let path = req.path().to_string();
 
         let fut = match (&req.method().clone(), self.route_parser.test(req.path())) {
@@ -233,15 +246,25 @@ impl Controller for ControllerImpl {
     }
 }
 
-fn default_headers(headers: &Headers, user: Option<UserId>) -> Headers {
-    let mut enriched_headers = Headers::new();
-    if let Some(user_id) = user {
-        enriched_headers.set(Authorization(user_id.to_string()));
+fn orders_headers(headers: &Headers) -> Headers {
+    let mut orders_headers = Headers::new();
+    if let Some(auth) = headers.get::<Authorization<String>>() {
+        orders_headers.set(auth.clone());
     }
-    //todo add sessionId
-    enriched_headers
+    //todo do not forget to add sessionId
+    orders_headers
 }
 
-fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: &Headers, user: Option<UserId>) -> Box<HttpClient> {
-    Box::new(HttpClientWithDefaultHeaders::new(client_handle, default_headers(headers, user)))
+fn stores_headers(headers: &Headers) -> Headers {
+    let mut stores_headers = Headers::new();
+    if let Some(auth) = headers.get::<Authorization<String>>() {
+        stores_headers.set(auth.clone());
+    }
+    stores_headers.set(CurrencyHeader("STQ".to_string()));
+    //todo add sessionId
+    stores_headers
+}
+
+fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> Box<HttpClient> {
+    Box::new(HttpClientWithDefaultHeaders::new(client_handle, headers))
 }
