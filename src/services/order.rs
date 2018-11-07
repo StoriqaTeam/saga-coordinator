@@ -15,7 +15,6 @@ use stq_api::orders::{BuyNow, Order};
 use stq_api::rpc_client::RestApiClient;
 use stq_api::warehouses::WarehouseClient;
 use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
@@ -25,7 +24,7 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use microservice::{NotificationsMicroservice, OrdersMicroservice, StoresMicroservice};
+use microservice::{NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice};
 use models::*;
 use services::types::ServiceFuture;
 
@@ -48,6 +47,7 @@ pub struct OrderServiceImpl {
     pub orders_microservice: Box<OrdersMicroservice>,
     pub stores_microservice: Box<StoresMicroservice>,
     pub notifications_microservice: Box<NotificationsMicroservice>,
+    pub users_microservice: Box<UsersMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
@@ -61,6 +61,7 @@ impl OrderServiceImpl {
         orders_microservice: Box<OrdersMicroservice>,
         stores_microservice: Box<StoresMicroservice>,
         notifications_microservice: Box<NotificationsMicroservice>,
+        users_microservice: Box<UsersMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
@@ -71,6 +72,7 @@ impl OrderServiceImpl {
             orders_microservice,
             stores_microservice,
             notifications_microservice,
+            users_microservice,
         }
     }
 
@@ -215,43 +217,35 @@ impl OrderServiceImpl {
     }
 
     fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
-        let mut headers = Headers::new();
         let notifications_microservice = self.notifications_microservice.cloned();
-        headers.set(Authorization(user_id.to_string()));
-        client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                move |user| {
-                    if let Some(user) = user {
-                        let user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = OrderCreateForUser {
-                            user,
-                            order_slug: order_slug.to_string(),
-                            cluster_url,
-                        };
-                        Either::A(notifications_microservice.with_superadmin().order_create_for_user(email))
-                    } else {
-                        error!(
-                            "Sending notification to user can not be done. User with id: {} is not found.",
-                            user_id
-                        );
-                        Either::B(future::err(
-                            format_err!("User is not found in users microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
+        self.users_microservice.with_user(user_id).get(user_id).and_then({
+            move |user| {
+                if let Some(user) = user {
+                    let user = EmailUser {
+                        email: user.email.clone(),
+                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                    };
+                    let email = OrderCreateForUser {
+                        user,
+                        order_slug: order_slug.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.with_superadmin().order_create_for_user(email))
+                } else {
+                    error!(
+                        "Sending notification to user can not be done. User with id: {} is not found.",
+                        user_id
+                    );
+                    Either::B(future::err(
+                        format_err!("User is not found in users microservice.")
+                            .context(Error::NotFound)
+                            .into(),
+                    ))
                 }
-            })
+            }
+        })
     }
 
     fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
@@ -292,44 +286,36 @@ impl OrderServiceImpl {
         order_slug: OrderSlug,
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
-        let mut headers = Headers::new();
-        headers.set(Authorization(user_id.to_string()));
         let notifications_microservice = self.notifications_microservice.cloned();
-        client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                move |user| {
-                    if let Some(user) = user {
-                        let user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = OrderUpdateStateForUser {
-                            user,
-                            order_slug: order_slug.to_string(),
-                            order_state: order_state.to_string(),
-                            cluster_url,
-                        };
-                        Either::A(notifications_microservice.with_superadmin().order_update_state_for_user(email))
-                    } else {
-                        error!(
-                            "Sending notification to user can not be done. User with id: {} is not found.",
-                            user_id
-                        );
-                        Either::B(future::err(
-                            format_err!("User is not found in users microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
+        self.users_microservice.with_user(user_id).get(user_id).and_then({
+            move |user| {
+                if let Some(user) = user {
+                    let user = EmailUser {
+                        email: user.email.clone(),
+                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                    };
+                    let email = OrderUpdateStateForUser {
+                        user,
+                        order_slug: order_slug.to_string(),
+                        order_state: order_state.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.with_superadmin().order_update_state_for_user(email))
+                } else {
+                    error!(
+                        "Sending notification to user can not be done. User with id: {} is not found.",
+                        user_id
+                    );
+                    Either::B(future::err(
+                        format_err!("User is not found in users microservice.")
+                            .context(Error::NotFound)
+                            .into(),
+                    ))
                 }
-            })
+            }
+        })
     }
 
     fn notify_store_update_order(
