@@ -25,7 +25,7 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use microservice::{OrdersMicroservice, StoresMicroservice};
+use microservice::{NotificationsMicroservice, OrdersMicroservice, StoresMicroservice};
 use models::*;
 use services::types::ServiceFuture;
 
@@ -47,6 +47,7 @@ pub struct OrderServiceImpl {
     pub http_client: HttpClientHandle,
     pub orders_microservice: Box<OrdersMicroservice>,
     pub stores_microservice: Box<StoresMicroservice>,
+    pub notifications_microservice: Box<NotificationsMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
@@ -59,6 +60,7 @@ impl OrderServiceImpl {
         user_id: Option<UserId>,
         orders_microservice: Box<OrdersMicroservice>,
         stores_microservice: Box<StoresMicroservice>,
+        notifications_microservice: Box<NotificationsMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
@@ -68,6 +70,7 @@ impl OrderServiceImpl {
             user_id,
             orders_microservice,
             stores_microservice,
+            notifications_microservice,
         }
     }
 
@@ -213,17 +216,16 @@ impl OrderServiceImpl {
 
     fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
         let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
         let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
         let mut headers = Headers::new();
+        let notifications_microservice = self.notifications_microservice.cloned();
         headers.set(Authorization(user_id.to_string()));
         client
             .request::<Option<User>>(Method::Get, url, None, Some(headers))
             .map_err(From::from)
             .and_then({
-                let client = client.clone();
                 move |user| {
                     if let Some(user) = user {
                         let user = EmailUser {
@@ -236,19 +238,7 @@ impl OrderServiceImpl {
                             order_slug: order_slug.to_string(),
                             cluster_url,
                         };
-                        let url = format!("{}/users/order-create", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
+                        Either::A(notifications_microservice.with_superadmin().order_create_for_user(email))
                     } else {
                         error!(
                             "Sending notification to user can not be done. User with id: {} is not found.",
@@ -265,13 +255,9 @@ impl OrderServiceImpl {
     }
 
     fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
         let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.cloned();
         self.stores_microservice.get(store_id).and_then({
-            let client = client.clone();
-            let notifications_url = notifications_url.clone();
-            let cluster_url = cluster_url.clone();
             move |store| {
                 if let Some(store) = store {
                     Either::A(if let Some(store_email) = store.email {
@@ -281,19 +267,7 @@ impl OrderServiceImpl {
                             order_slug: order_slug.to_string(),
                             cluster_url,
                         };
-                        let url = format!("{}/stores/order-create", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
+                        Either::A(notifications_microservice.with_superadmin().order_create_for_store(email))
                     } else {
                         Either::B(future::ok(()))
                     })
@@ -319,17 +293,16 @@ impl OrderServiceImpl {
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
         let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
         let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
         let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
         let mut headers = Headers::new();
         headers.set(Authorization(user_id.to_string()));
+        let notifications_microservice = self.notifications_microservice.cloned();
         client
             .request::<Option<User>>(Method::Get, url, None, Some(headers))
             .map_err(From::from)
             .and_then({
-                let client = client.clone();
                 move |user| {
                     if let Some(user) = user {
                         let user = EmailUser {
@@ -343,19 +316,7 @@ impl OrderServiceImpl {
                             order_state: order_state.to_string(),
                             cluster_url,
                         };
-                        let url = format!("{}/users/order-update-state", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
+                        Either::A(notifications_microservice.with_superadmin().order_update_state_for_user(email))
                     } else {
                         error!(
                             "Sending notification to user can not be done. User with id: {} is not found.",
@@ -377,13 +338,9 @@ impl OrderServiceImpl {
         order_slug: OrderSlug,
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
         let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.cloned();
         self.stores_microservice.get(store_id).and_then({
-            let client = client.clone();
-            let notifications_url = notifications_url.clone();
-            let cluster_url = cluster_url.clone();
             move |store| {
                 if let Some(store) = store {
                     Either::A(if let Some(store_email) = store.email {
@@ -394,19 +351,7 @@ impl OrderServiceImpl {
                             order_state: order_state.to_string(),
                             cluster_url,
                         };
-                        let url = format!("{}/stores/order-update-state", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
+                        Either::A(notifications_microservice.with_superadmin().order_update_state_for_store(email))
                     } else {
                         Either::B(future::ok(()))
                     })

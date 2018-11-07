@@ -31,7 +31,7 @@ use self::routes::Route;
 use config::Config;
 use errors::Error;
 use http::{HttpClient, HttpClientWithDefaultHeaders};
-use microservice::{OrdersMicroserviceImpl, StoresMicroserviceImpl};
+use microservice::{NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl};
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
 };
@@ -67,6 +67,11 @@ impl Controller for ControllerImpl {
             self.config.clone(),
         );
 
+        let notifications_microservice = NotificationsMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), notifications_headers(&headers)),
+            self.config.clone(),
+        );
+
         let config = self.config.clone();
 
         let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
@@ -77,6 +82,7 @@ impl Controller for ControllerImpl {
             user_id,
             Box::new(orders_microservice),
             Box::new(stores_microservice),
+            Box::new(notifications_microservice),
         );
         let path = req.path().to_string();
 
@@ -251,7 +257,7 @@ fn orders_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         orders_headers.set(auth.clone());
     }
-    //todo do not forget to add sessionId
+    //todo do not forget to add sessionId to headers
     orders_headers
 }
 
@@ -261,8 +267,17 @@ fn stores_headers(headers: &Headers) -> Headers {
         stores_headers.set(auth.clone());
     }
     stores_headers.set(CurrencyHeader("STQ".to_string()));
-    //todo add sessionId
+    //todo do not forget to add add sessionId
     stores_headers
+}
+
+fn notifications_headers(headers: &Headers) -> Headers {
+    let mut notification_headers = Headers::new();
+    if let Some(auth) = headers.get::<Authorization<String>>() {
+        notification_headers.set(auth.clone());
+    }
+    //todo sessionId
+    notification_headers
 }
 
 fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> Box<HttpClient> {
