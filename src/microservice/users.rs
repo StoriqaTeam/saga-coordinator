@@ -1,8 +1,5 @@
-use futures::{Future, IntoFuture};
 use hyper::header::{Authorization, Headers};
 use hyper::Method;
-use serde::de::Deserialize;
-use serde::ser::Serialize;
 
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
@@ -56,37 +53,13 @@ impl UsersMicroservice for UsersMicroserviceImpl {
     fn get(&self, user_id: UserId) -> ApiFuture<Option<User>> {
         let url = format!("{}/{}/{}", self.users_url(), StqModel::User.to_url(), user_id);
 
-        self.request::<(), Option<User>>(Method::Get, url, None, None)
+        super::request::<_, (), Option<User>>(self.http_client.cloned(), Method::Get, url, None, None)
     }
 }
 
 impl UsersMicroserviceImpl {
     pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
         Self { http_client, config }
-    }
-
-    fn request<T: Serialize, S: for<'a> Deserialize<'a> + 'static + Send>(
-        &self,
-        method: Method,
-        url: String,
-        payload: Option<T>,
-        headers: Option<Headers>,
-    ) -> ApiFuture<S> {
-        let body = if let Some(payload) = payload {
-            serde_json::to_string::<T>(&payload).map(Some)
-        } else {
-            Ok(None)
-        };
-
-        let http_client = self.http_client.cloned();
-
-        let result = body
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |serialized_body| http_client.request(method, url, serialized_body, headers))
-            .and_then(|response| response.parse::<S>().into_future());
-
-        Box::new(result)
     }
 
     fn users_url(&self) -> String {

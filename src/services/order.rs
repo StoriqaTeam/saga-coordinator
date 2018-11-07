@@ -84,17 +84,17 @@ impl OrderServiceImpl {
             .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
         self.orders_microservice
-            .convert_cart(
-                Some(convert_cart.conversion_id),
-                convert_cart.convert_cart.customer_id,
-                convert_cart.convert_cart.prices,
-                convert_cart.convert_cart.address,
-                convert_cart.convert_cart.receiver_name,
-                convert_cart.convert_cart.receiver_phone,
-                convert_cart.convert_cart.receiver_email,
-                convert_cart.convert_cart.coupons,
-                convert_cart.convert_cart.delivery_info,
-            ).map_err(|e| {
+            .convert_cart(ConvertCartPayload {
+                conversion_id: Some(convert_cart.conversion_id),
+                user_id: convert_cart.convert_cart.customer_id,
+                seller_prices: convert_cart.convert_cart.prices,
+                address: convert_cart.convert_cart.address,
+                receiver_name: convert_cart.convert_cart.receiver_name,
+                receiver_phone: convert_cart.convert_cart.receiver_phone,
+                receiver_email: convert_cart.convert_cart.receiver_email,
+                coupons: convert_cart.convert_cart.coupons,
+                delivery_info: convert_cart.convert_cart.delivery_info,
+            }).map_err(|e| {
                 parse_validation_errors(e.into(), &["order"])
                     .context("Converting cart in orders microservice failed.")
                     .into()

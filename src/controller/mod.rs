@@ -62,7 +62,7 @@ impl Controller for ControllerImpl {
         let http_client = self.http_client.clone();
 
         let orders_microservice = OrdersMicroserviceImpl::new(
-            http_client_with_default_headers(http_client.clone(), orders_headers(&headers)),
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
         );
 
@@ -72,22 +72,22 @@ impl Controller for ControllerImpl {
         );
 
         let notifications_microservice = NotificationsMicroserviceImpl::new(
-            http_client_with_default_headers(http_client.clone(), notifications_headers(&headers)),
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
         );
 
         let users_microservice = UsersMicroserviceImpl::new(
-            http_client_with_default_headers(http_client.clone(), users_headers(&headers)),
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
         );
 
         let billing_microservice = BillingMicroserviceImpl::new(
-            http_client_with_default_headers(http_client.clone(), billing_headers(&headers)),
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
         );
 
         let warehouses_microservice = WarehousesMicroserviceImpl::new(
-            http_client_with_default_headers(http_client.clone(), warehouses_headers(&headers)),
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
         );
 
@@ -273,71 +273,21 @@ impl Controller for ControllerImpl {
     }
 }
 
-fn orders_headers(headers: &Headers) -> Headers {
+fn default_headers(request_headers: &Headers) -> Headers {
     let mut orders_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
+    if let Some(auth) = request_headers.get::<Authorization<String>>() {
         orders_headers.set(auth.clone());
     }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+    if let Some(correlation) = request_headers.get::<CorrelationTokenHeader>() {
         orders_headers.set(correlation.clone());
     }
     orders_headers
 }
 
-fn stores_headers(headers: &Headers) -> Headers {
-    let mut stores_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
-        stores_headers.set(auth.clone());
-    }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
-        stores_headers.set(correlation.clone());
-    }
+fn stores_headers(request_headers: &Headers) -> Headers {
+    let mut stores_headers = default_headers(request_headers);
     stores_headers.set(CurrencyHeader("STQ".to_string()));
     stores_headers
-}
-
-fn notifications_headers(headers: &Headers) -> Headers {
-    let mut notification_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
-        notification_headers.set(auth.clone());
-    }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
-        notification_headers.set(correlation.clone());
-    }
-    notification_headers
-}
-
-fn users_headers(headers: &Headers) -> Headers {
-    let mut users_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
-        users_headers.set(auth.clone());
-    }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
-        users_headers.set(correlation.clone());
-    }
-    users_headers
-}
-
-fn billing_headers(headers: &Headers) -> Headers {
-    let mut billing_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
-        billing_headers.set(auth.clone());
-    }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
-        billing_headers.set(correlation.clone());
-    }
-    billing_headers
-}
-
-fn warehouses_headers(headers: &Headers) -> Headers {
-    let mut warehouses_headers = Headers::new();
-    if let Some(auth) = headers.get::<Authorization<String>>() {
-        warehouses_headers.set(auth.clone());
-    }
-    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
-        warehouses_headers.set(correlation.clone());
-    }
-    warehouses_headers
 }
 
 fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> Box<HttpClient> {

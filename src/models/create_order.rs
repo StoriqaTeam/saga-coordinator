@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::time::SystemTime;
 
-use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order};
+use stq_api::orders::{AddressFull, BuyNow, CouponInfo, DeliveryInfo, Order};
 use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
@@ -161,4 +161,25 @@ pub struct Transaction {
 pub struct UsedCoupon {
     pub coupon_id: CouponId,
     pub user_id: UserId,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConvertCartPayload {
+    pub conversion_id: Option<ConversionId>,
+    pub user_id: UserId,
+    pub receiver_name: String,
+    pub receiver_phone: String,
+    pub receiver_email: String,
+    #[serde(flatten)]
+    pub address: AddressFull,
+    pub seller_prices: HashMap<ProductId, ProductSellerPrice>,
+    pub coupons: HashMap<CouponId, CouponInfo>,
+    pub delivery_info: HashMap<ProductId, DeliveryInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BuyNowPayload {
+    pub conversion_id: Option<ConversionId>,
+    #[serde(flatten)]
+    pub buy_now: BuyNow,
 }

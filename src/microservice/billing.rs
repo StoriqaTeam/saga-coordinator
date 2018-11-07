@@ -1,8 +1,4 @@
-use futures::{Future, IntoFuture};
-use hyper::header::Headers;
 use hyper::Method;
-use serde::de::Deserialize;
-use serde::ser::Serialize;
 
 use stq_routes::service::Service as StqService;
 use stq_types::*;
@@ -43,41 +39,18 @@ impl BillingMicroservice for BillingMicroserviceImpl {
     fn revert_create_invoice(&self, saga_id: SagaId) -> ApiFuture<SagaId> {
         let url = format!("{}/invoices/by-saga-id/{}", self.billing_url(), saga_id.0);
 
-        self.request::<(), SagaId>(Method::Delete, url, None, None)
+        super::request::<_, (), SagaId>(self.http_client.cloned(), Method::Delete, url, None, None)
     }
 
     fn create_invoice(&self, payload: CreateInvoice) -> ApiFuture<Invoice> {
         let url = format!("{}/invoices", self.billing_url());
-        self.request::<CreateInvoice, Invoice>(Method::Post, url, Some(payload), None)
+        super::request::<_, CreateInvoice, Invoice>(self.http_client.cloned(), Method::Post, url, Some(payload), None)
     }
 }
 
 impl BillingMicroserviceImpl {
     pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
         Self { http_client, config }
-    }
-
-    fn request<T: Serialize, S: for<'a> Deserialize<'a> + 'static + Send>(
-        &self,
-        method: Method,
-        url: String,
-        payload: Option<T>,
-        headers: Option<Headers>,
-    ) -> ApiFuture<S> {
-        let body = if let Some(payload) = payload {
-            serde_json::to_string::<T>(&payload).map(Some)
-        } else {
-            Ok(None)
-        };
-
-        let http_client = self.http_client.cloned();
-
-        let result = body
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |serialized_body| http_client.request(method, url, serialized_body, headers))
-            .and_then(|response| response.parse::<S>().into_future());
-        Box::new(result)
     }
 
     fn billing_url(&self) -> String {
