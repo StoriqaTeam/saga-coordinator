@@ -6,10 +6,6 @@ use failure::Fail;
 use futures::future::{self, join_all, Either};
 use futures::prelude::*;
 use futures::stream::iter_ok;
-use hyper::header::Authorization;
-use hyper::Headers;
-use hyper::Method;
-use serde_json;
 
 use stq_api::orders::{BuyNow, Order};
 use stq_api::rpc_client::RestApiClient;
@@ -24,7 +20,7 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use microservice::{NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice};
+use microservice::{BillingMicroservice, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice};
 use models::*;
 use services::types::ServiceFuture;
 
@@ -48,6 +44,7 @@ pub struct OrderServiceImpl {
     pub stores_microservice: Box<StoresMicroservice>,
     pub notifications_microservice: Box<NotificationsMicroservice>,
     pub users_microservice: Box<UsersMicroservice>,
+    pub billing_microservice: Box<BillingMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
@@ -62,6 +59,7 @@ impl OrderServiceImpl {
         stores_microservice: Box<StoresMicroservice>,
         notifications_microservice: Box<NotificationsMicroservice>,
         users_microservice: Box<UsersMicroservice>,
+        billing_microservice: Box<BillingMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
@@ -73,6 +71,7 @@ impl OrderServiceImpl {
             stores_microservice,
             notifications_microservice,
             users_microservice,
+            billing_microservice,
         }
     }
 
@@ -188,23 +187,13 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can create invoice
-
-        let billing_url = self.config.service_url(StqService::Billing);
-        let client = self.http_client.clone();
-
-        serde_json::to_string(&input)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<Invoice>(Method::Post, format!("{}/invoices", billing_url), Some(body), Some(headers))
-                    .map_err(|e| {
-                        e.context("Creating invoice in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        self.billing_microservice
+            .with_superadmin()
+            .create_invoice(input.clone())
+            .map_err(|e| {
+                e.context("Creating invoice in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -643,39 +632,30 @@ impl OrderServiceImpl {
     // Contains reversal of Order creation
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let http_client = self.http_client.clone();
         let orders_microservice = self.orders_microservice.cloned();
-        let billing_url = self.config.service_url(StqService::Billing);
+        let billing_microservice = self.billing_microservice.cloned();
+        let fut = iter_ok::<_, ()>(log).for_each(move |e| match e {
+            CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
+                debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
+                let result = orders_microservice
+                    .with_superadmin()
+                    .revert_convert_cart(ConvertCartRevert { conversion_id })
+                    .then(|_| Ok(()));
 
-        let fut = iter_ok::<_, ()>(log).for_each(move |e| {
-            match e {
-                CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
-                    debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
-                    let result = orders_microservice
-                        .with_superadmin()
-                        .revert_convert_cart(ConvertCartRevert { conversion_id });
-
-                    Box::new(result.then(|_| Ok(()))) as Box<Future<Item = (), Error = ()>>
-                }
-
-                CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
-                    debug!("Reverting create invoice, saga_id: {}", saga_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin can revert invoice
-
-                    Box::new(
-                        http_client
-                            .request::<SagaId>(
-                                Method::Delete,
-                                format!("{}/invoices/by-saga-id/{}", billing_url, saga_id.0,),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
-                    ) as Box<Future<Item = (), Error = ()>>
-                }
-
-                _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
+                Box::new(result) as Box<Future<Item = (), Error = ()>>
             }
+
+            CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
+                debug!("Reverting create invoice, saga_id: {}", saga_id);
+                let result = billing_microservice
+                    .with_superadmin()
+                    .revert_create_invoice(saga_id)
+                    .then(|_| Ok(()));
+
+                Box::new(result) as Box<Future<Item = (), Error = ()>>
+            }
+
+            _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
         });
 
         fut.then(|res| match res {
