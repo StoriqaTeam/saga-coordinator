@@ -4,6 +4,7 @@ use hyper::header::Headers;
 use hyper::Method;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
+use serde_json;
 
 use http::HttpClient;
 
