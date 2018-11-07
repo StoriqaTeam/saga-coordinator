@@ -23,6 +23,7 @@ use stq_http::controller::ControllerFuture;
 use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
+use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
 use stq_http::request_util::Currency as CurrencyHeader;
 use stq_router::RouteParser;
 use stq_types::UserId;
@@ -277,7 +278,9 @@ fn orders_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         orders_headers.set(auth.clone());
     }
-    //todo please, somebody, anyone, do not forget to add sessionId to headers
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        orders_headers.set(correlation.clone());
+    }
     orders_headers
 }
 
@@ -286,8 +289,10 @@ fn stores_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         stores_headers.set(auth.clone());
     }
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        stores_headers.set(correlation.clone());
+    }
     stores_headers.set(CurrencyHeader("STQ".to_string()));
-    //todo please, somebody, do not forget to add add sessionId to headers
     stores_headers
 }
 
@@ -296,7 +301,9 @@ fn notifications_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         notification_headers.set(auth.clone());
     }
-    //todo do not forget to add sessionId
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        notification_headers.set(correlation.clone());
+    }
     notification_headers
 }
 
@@ -305,7 +312,9 @@ fn users_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         users_headers.set(auth.clone());
     }
-    //todo do not forget to add sessionId
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        users_headers.set(correlation.clone());
+    }
     users_headers
 }
 
@@ -314,7 +323,9 @@ fn billing_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         billing_headers.set(auth.clone());
     }
-    //todo add sessionId
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        billing_headers.set(correlation.clone());
+    }
     billing_headers
 }
 
@@ -323,7 +334,9 @@ fn warehouses_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         warehouses_headers.set(auth.clone());
     }
-    //todo sessionId
+    if let Some(correlation) = headers.get::<CorrelationTokenHeader>() {
+        warehouses_headers.set(correlation.clone());
+    }
     warehouses_headers
 }
 
