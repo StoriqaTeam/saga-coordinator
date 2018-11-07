@@ -33,6 +33,7 @@ use errors::Error;
 use http::{HttpClient, HttpClientWithDefaultHeaders};
 use microservice::{
     BillingMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl, UsersMicroserviceImpl,
+    WarehousesMicroserviceImpl,
 };
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
@@ -84,12 +85,16 @@ impl Controller for ControllerImpl {
             self.config.clone(),
         );
 
+        let warehouses_microservice = WarehousesMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), warehouses_headers(&headers)),
+            self.config.clone(),
+        );
+
         let config = self.config.clone();
 
         let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
         let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
         let order_service = OrderServiceImpl::new(
-            http_client,
             config,
             user_id,
             Box::new(orders_microservice),
@@ -97,6 +102,7 @@ impl Controller for ControllerImpl {
             Box::new(notifications_microservice),
             Box::new(users_microservice),
             Box::new(billing_microservice),
+            Box::new(warehouses_microservice),
         );
         let path = req.path().to_string();
 
@@ -271,7 +277,7 @@ fn orders_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         orders_headers.set(auth.clone());
     }
-    //todo please, somebody, do not forget to add sessionId to headers
+    //todo please, somebody, anyone, do not forget to add sessionId to headers
     orders_headers
 }
 
@@ -281,7 +287,7 @@ fn stores_headers(headers: &Headers) -> Headers {
         stores_headers.set(auth.clone());
     }
     stores_headers.set(CurrencyHeader("STQ".to_string()));
-    //todo please do not forget to add add sessionId to headers
+    //todo please, somebody, do not forget to add add sessionId to headers
     stores_headers
 }
 
@@ -290,7 +296,7 @@ fn notifications_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         notification_headers.set(auth.clone());
     }
-    //todo not forget add sessionId
+    //todo do not forget to add sessionId
     notification_headers
 }
 
@@ -299,7 +305,7 @@ fn users_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         users_headers.set(auth.clone());
     }
-    //todo not forget add sessionId
+    //todo do not forget to add sessionId
     users_headers
 }
 
@@ -308,8 +314,17 @@ fn billing_headers(headers: &Headers) -> Headers {
     if let Some(auth) = headers.get::<Authorization<String>>() {
         billing_headers.set(auth.clone());
     }
-    //todo sessionId
+    //todo add sessionId
     billing_headers
+}
+
+fn warehouses_headers(headers: &Headers) -> Headers {
+    let mut warehouses_headers = Headers::new();
+    if let Some(auth) = headers.get::<Authorization<String>>() {
+        warehouses_headers.set(auth.clone());
+    }
+    //todo sessionId
+    warehouses_headers
 }
 
 fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> Box<HttpClient> {

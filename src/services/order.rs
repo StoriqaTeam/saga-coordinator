@@ -8,10 +8,6 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 
 use stq_api::orders::{BuyNow, Order};
-use stq_api::rpc_client::RestApiClient;
-use stq_api::warehouses::WarehouseClient;
-use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
@@ -20,7 +16,9 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
-use microservice::{BillingMicroservice, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice};
+use microservice::{
+    BillingMicroservice, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice, WarehousesMicroservice,
+};
 use models::*;
 use services::types::ServiceFuture;
 
@@ -39,12 +37,12 @@ pub trait OrderService {
 
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
-    pub http_client: HttpClientHandle,
     pub orders_microservice: Box<OrdersMicroservice>,
     pub stores_microservice: Box<StoresMicroservice>,
     pub notifications_microservice: Box<NotificationsMicroservice>,
     pub users_microservice: Box<UsersMicroservice>,
     pub billing_microservice: Box<BillingMicroservice>,
+    pub warehouses_microservice: Box<WarehousesMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
     pub user_id: Option<UserId>,
@@ -52,7 +50,6 @@ pub struct OrderServiceImpl {
 
 impl OrderServiceImpl {
     pub fn new(
-        http_client: HttpClientHandle,
         config: config::Config,
         user_id: Option<UserId>,
         orders_microservice: Box<OrdersMicroservice>,
@@ -60,10 +57,10 @@ impl OrderServiceImpl {
         notifications_microservice: Box<NotificationsMicroservice>,
         users_microservice: Box<UsersMicroservice>,
         billing_microservice: Box<BillingMicroservice>,
+        warehouses_microservice: Box<WarehousesMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
-            http_client,
             config,
             log,
             user_id,
@@ -72,6 +69,7 @@ impl OrderServiceImpl {
             notifications_microservice,
             users_microservice,
             billing_microservice,
+            warehouses_microservice,
         }
     }
 
@@ -580,15 +578,16 @@ impl OrderServiceImpl {
     fn update_warehouse(self, orders: &[Option<Order>]) -> impl Future<Item = (Self, Vec<()>), Error = (Self, FailureError)> {
         debug!("Updating warehouses stock: {:?}", orders);
 
-        let warehouses_url = self.config.service_url(StqService::Warehouses);
         let mut orders_futures = vec![];
         for order in orders {
+            let warehouses_microservice = self.warehouses_microservice.cloned();
             if let Some(order) = order {
                 if order.state == OrderState::Paid {
                     debug!("Updating warehouses stock with product id {}", order.product);
-                    let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
                     let order_quantity = order.quantity;
-                    let res = rpc_client
+                    let res = self
+                        .warehouses_microservice
+                        .with_superadmin()
                         .find_by_product_id(order.product)
                         .and_then(move |stocks| {
                             debug!("Updating warehouses stocks: {:?}", stocks);
@@ -603,7 +602,8 @@ impl OrderServiceImpl {
                                     stock.warehouse_id, stock.product_id, new_quantity
                                 );
                                 return Either::A(
-                                    rpc_client
+                                    warehouses_microservice
+                                        .with_superadmin()
                                         .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
                                         .map(|_| ()),
                                 );

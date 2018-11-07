@@ -16,4 +16,7 @@ pub use self::users::*;
 mod billing;
 pub use self::billing::*;
 
+mod warehouses;
+pub use self::warehouses::*;
+
 pub type ApiFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
