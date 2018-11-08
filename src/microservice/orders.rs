@@ -22,6 +22,8 @@ pub trait OrdersMicroservice {
     ) -> ApiFuture<Option<Order>>;
     fn create_buy_now(&self, buy_now: BuyNow, conversion_id: Option<ConversionId>) -> ApiFuture<Vec<Order>>;
     fn revert_convert_cart(&self, initiator: Initiator, payload: ConvertCartRevert) -> ApiFuture<CartHash>;
+    fn create_role(&self, initiator: Option<Initiator>, role: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>>;
+    fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>>;
 }
 
 pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -30,6 +32,20 @@ pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceImpl<T> {
+    fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>> {
+        let url = format!("{}/roles/by-id/{}", self.orders_url(), role_id);
+        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+    }
+    fn create_role(&self, initiator: Option<Initiator>, payload: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>> {
+        let url = format!("{}/{}", self.orders_url(), StqModel::Role.to_url());
+        super::request::<_, RoleEntry<NewOrdersRole>, RoleEntry<NewOrdersRole>>(
+            self.http_client.clone(),
+            Method::Post,
+            url,
+            Some(payload),
+            initiator.map(Into::into),
+        )
+    }
     fn convert_cart(&self, payload: ConvertCartPayload) -> ApiFuture<Vec<Order>> {
         let url = format!("{}/{}/create_from_cart", self.orders_url(), StqModel::Order.to_url());
         super::request::<_, ConvertCartPayload, Vec<Order>>(self.http_client.clone(), Method::Post, url, Some(payload), None)

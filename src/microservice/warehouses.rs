@@ -1,6 +1,7 @@
 use hyper::Method;
 
 use stq_api::warehouses::{Stock, StockSetPayload};
+use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_types::*;
 
@@ -8,8 +9,15 @@ use super::{ApiFuture, Initiator};
 
 use config;
 use http::HttpClient;
+use models::*;
 
 pub trait WarehousesMicroservice {
+    fn delete_warehouse_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewWarehouseRole>>;
+    fn create_warehouse_role(
+        &self,
+        initiator: Option<Initiator>,
+        payload: RoleEntry<NewWarehouseRole>,
+    ) -> ApiFuture<RoleEntry<NewWarehouseRole>>;
     fn find_by_product_id(&self, initiator: Initiator, product_id: ProductId) -> ApiFuture<Vec<Stock>>;
     fn set_product_in_warehouse(
         &self,
@@ -26,6 +34,25 @@ pub struct WarehousesMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicroserviceImpl<T> {
+    fn delete_warehouse_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewWarehouseRole>> {
+        let url = format!("{}/roles/by-id/{}", self.warehouses_url(), role_id);
+        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+    }
+
+    fn create_warehouse_role(
+        &self,
+        initiator: Option<Initiator>,
+        payload: RoleEntry<NewWarehouseRole>,
+    ) -> ApiFuture<RoleEntry<NewWarehouseRole>> {
+        let url = format!("{}/{}", self.warehouses_url(), StqModel::Role.to_url());
+        super::request(
+            self.http_client.clone(),
+            Method::Post,
+            url,
+            Some(payload),
+            initiator.map(Into::into),
+        )
+    }
     fn set_product_in_warehouse(
         &self,
         initiator: Initiator,

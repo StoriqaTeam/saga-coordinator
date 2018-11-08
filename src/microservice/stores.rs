@@ -11,6 +11,8 @@ use http::HttpClient;
 use models::*;
 
 pub trait StoresMicroservice {
+    fn delete_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store>;
+    fn create_store(&self, initiator: Option<Initiator>, payload: NewStore) -> ApiFuture<Store>;
     fn use_coupon(&self, initiator: Initiator, coupon: CouponId, user: UserId) -> ApiFuture<UsedCoupon>;
     fn get(&self, store: StoreId) -> ApiFuture<Option<Store>>;
 }
@@ -21,6 +23,21 @@ pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceImpl<T> {
+    fn delete_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store> {
+        let url = format!("{}/{}/{}", self.stores_url(), StqModel::Store.to_url(), store_id);
+        super::request::<_, NewStore, Store>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+    }
+
+    fn create_store(&self, initiator: Option<Initiator>, payload: NewStore) -> ApiFuture<Store> {
+        let url = format!("{}/{}", self.stores_url(), StqModel::Store.to_url());
+        super::request::<_, NewStore, Store>(
+            self.http_client.clone(),
+            Method::Post,
+            url,
+            Some(payload),
+            initiator.map(Into::into),
+        )
+    }
     fn get(&self, store: StoreId) -> ApiFuture<Option<Store>> {
         let url = format!("{}/{}/{}", self.stores_url(), StqModel::Store.to_url(), store);
         super::request::<_, (), Option<Store>>(self.http_client.clone(), Method::Get, url, None, None)

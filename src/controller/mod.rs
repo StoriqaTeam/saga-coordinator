@@ -4,7 +4,6 @@
 //! of `Service` layer to http responses
 pub mod routes;
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use failure::Error as FailureError;
@@ -26,15 +25,14 @@ use stq_http::request_util::serialize_future;
 use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
 use stq_http::request_util::Currency as CurrencyHeader;
 use stq_router::RouteParser;
-use stq_types::UserId;
 
 use self::routes::Route;
 use config::Config;
 use errors::Error;
 use http::HttpClientWithDefaultHeaders;
 use microservice::{
-    BillingMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl, UsersMicroserviceImpl,
-    WarehousesMicroserviceImpl,
+    BillingMicroserviceImpl, DeliveryMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl,
+    UsersMicroserviceImpl, WarehousesMicroserviceImpl,
 };
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
@@ -53,11 +51,6 @@ pub struct ControllerImpl {
 impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         let headers = req.headers().clone();
-        let auth_header = headers.get::<Authorization<String>>();
-        let user_id = auth_header
-            .map(|auth| auth.0.clone())
-            .and_then(|id| i32::from_str(&id).ok())
-            .map(UserId);
 
         let http_client = self.http_client.clone();
 
@@ -91,18 +84,31 @@ impl Controller for ControllerImpl {
             self.config.clone(),
         ));
 
+        let delivery_microservice = Arc::new(DeliveryMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
         let config = self.config.clone();
 
         let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
-        let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
+        let store_service = StoreServiceImpl::new(
+            config.clone(),
+            orders_microservice.clone(),
+            stores_microservice.clone(),
+            billing_microservice.clone(),
+            warehouses_microservice.clone(),
+            delivery_microservice.clone(),
+        );
+
         let order_service = OrderServiceImpl::new(
             config,
-            orders_microservice,
-            stores_microservice,
-            notifications_microservice,
-            users_microservice,
-            billing_microservice,
-            warehouses_microservice,
+            orders_microservice.clone(),
+            stores_microservice.clone(),
+            notifications_microservice.clone(),
+            users_microservice.clone(),
+            billing_microservice.clone(),
+            warehouses_microservice.clone(),
         );
         let path = req.path().to_string();
 
