@@ -1,7 +1,3 @@
 FROM rust:1.30-stretch
 
-# Install clang
-RUN apt-get update && \
-    apt-get install -y libclang1 clang
-
 VOLUME /usr/local/cargo
