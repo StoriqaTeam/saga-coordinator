@@ -1,3 +1,5 @@
+use failure::Fail;
+use futures::Future;
 use hyper::Method;
 
 use stq_routes::model::Model as StqModel;
@@ -7,6 +9,7 @@ use stq_types::*;
 use super::{ApiFuture, Initiator};
 
 use config;
+use errors::Error;
 use http::HttpClient;
 use models::*;
 
@@ -29,60 +32,109 @@ pub struct BillingMicroserviceImpl<T: HttpClient + Clone> {
 impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroserviceImpl<T> {
     fn delete_user_merchant(&self, initiator: Option<Initiator>, user_id: UserId) -> ApiFuture<MerchantId> {
         let url = format!("{}/merchants/user/{}", self.billing_url(), user_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting user merchant in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn create_user_merchant(&self, initiator: Option<Initiator>, payload: CreateUserMerchantPayload) -> ApiFuture<Merchant> {
         let url = format!("{}/merchants/user", self.billing_url());
-        super::request(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(|e| {
+                e.context("Creating merchant in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn delete_store_merchant(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<MerchantId> {
         let url = format!("{}/merchants/store/{}", self.billing_url(), store_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting store merchant in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<BillingRole>> {
         let url = format!("{}/roles/by-id/{}", self.billing_url(), role_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting role in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn create_store_merchant(&self, initiator: Option<Initiator>, payload: CreateStoreMerchantPayload) -> ApiFuture<Merchant> {
         let url = format!("{}/merchants/store", self.billing_url());
-        super::request(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(|e| {
+                e.context("Creating merchant in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn create_role(&self, initiator: Option<Initiator>, payload: NewRole<BillingRole>) -> ApiFuture<NewRole<BillingRole>> {
         let url = format!("{}/{}", self.billing_url(), StqModel::Role.to_url());
-        super::request(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(|e| {
+                e.context("Creating role in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId> {
         let url = format!("{}/invoices/by-saga-id/{}", self.billing_url(), saga_id.0);
-        super::request::<_, (), SagaId>(self.http_client.clone(), Method::Delete, url, None, Some(initiator.into()))
+        Box::new(
+            super::request::<_, (), SagaId>(self.http_client.clone(), Method::Delete, url, None, Some(initiator.into())).map_err(|e| {
+                e.context("Reverting invoice creation in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn create_invoice(&self, initiator: Initiator, payload: CreateInvoice) -> ApiFuture<Invoice> {
         let url = format!("{}/invoices", self.billing_url());
-        super::request::<_, CreateInvoice, Invoice>(self.http_client.clone(), Method::Post, url, Some(payload), Some(initiator.into()))
+        Box::new(
+            super::request::<_, CreateInvoice, Invoice>(self.http_client.clone(), Method::Post, url, Some(payload), Some(initiator.into()))
+                .map_err(|e| {
+                    e.context("Creating invoice in billing microservice failed.")
+                        .context(Error::HttpClient)
+                        .into()
+                }),
+        )
     }
 }
 

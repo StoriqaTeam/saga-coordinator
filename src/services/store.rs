@@ -65,11 +65,7 @@ impl StoreServiceImpl {
         let res = self
             .stores_microservice
             .create_store(None, input.clone())
-            .map_err(|e| {
-                e.context("Creating store in stores microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |store| {
+            .and_then(move |store| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
                 Ok(store)
             }).then(|res| match res {
@@ -99,11 +95,7 @@ impl StoreServiceImpl {
         let res = self
             .warehouses_microservice
             .create_warehouse_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in warehouses microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
@@ -133,11 +125,7 @@ impl StoreServiceImpl {
         let res = self
             .orders_microservice
             .create_role(Some(Initiator::Superadmin), role.clone())
-            .map_err(|e| {
-                e.context("Creating role in orders microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
@@ -165,11 +153,7 @@ impl StoreServiceImpl {
         let res = self
             .billing_microservice
             .create_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in billing microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
@@ -227,11 +211,7 @@ impl StoreServiceImpl {
         let res = self
             .billing_microservice
             .create_store_merchant(Some(Initiator::Superadmin), payload)
-            .map_err(|e| {
-                e.context("Creating merchant in billing microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));

@@ -1,3 +1,5 @@
+use failure::Fail;
+use futures::Future;
 use hyper::Method;
 
 use stq_api::warehouses::{Stock, StockSetPayload};
@@ -8,6 +10,7 @@ use stq_types::*;
 use super::{ApiFuture, Initiator};
 
 use config;
+use errors::Error;
 use http::HttpClient;
 use models::*;
 
@@ -36,7 +39,13 @@ pub struct WarehousesMicroserviceImpl<T: 'static + HttpClient + Clone> {
 impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicroserviceImpl<T> {
     fn delete_warehouse_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewWarehouseRole>> {
         let url = format!("{}/roles/by-id/{}", self.warehouses_url(), role_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting role in warehouses microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn create_warehouse_role(
@@ -45,12 +54,18 @@ impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicro
         payload: RoleEntry<NewWarehouseRole>,
     ) -> ApiFuture<RoleEntry<NewWarehouseRole>> {
         let url = format!("{}/{}", self.warehouses_url(), StqModel::Role.to_url());
-        super::request(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(|e| {
+                e.context("Creating role in warehouses microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
     fn set_product_in_warehouse(
@@ -67,18 +82,30 @@ impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicro
             product_id
         );
 
-        super::request::<_, StockSetPayload, Stock>(
-            self.http_client.clone(),
-            Method::Put,
-            url,
-            Some(StockSetPayload { quantity }),
-            Some(initiator.into()),
+        Box::new(
+            super::request::<_, StockSetPayload, Stock>(
+                self.http_client.clone(),
+                Method::Put,
+                url,
+                Some(StockSetPayload { quantity }),
+                Some(initiator.into()),
+            ).map_err(|e| {
+                e.context("Setting product quantity in warehouses microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn find_by_product_id(&self, initiator: Initiator, product_id: ProductId) -> ApiFuture<Vec<Stock>> {
         let url = format!("{}/stocks/by-product-id/{}", self.warehouses_url(), product_id);
-        super::request::<_, (), Vec<Stock>>(self.http_client.clone(), Method::Get, url, None, Some(initiator.into()))
+        Box::new(
+            super::request::<_, (), Vec<Stock>>(self.http_client.clone(), Method::Get, url, None, Some(initiator.into())).map_err(|e| {
+                e.context("Find stocks in warehouses microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 }
 

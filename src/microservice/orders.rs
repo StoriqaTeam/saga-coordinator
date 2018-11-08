@@ -1,3 +1,5 @@
+use failure::Fail;
+use futures::Future;
 use hyper::Method;
 
 use stq_api::orders::{BuyNow, Order};
@@ -8,8 +10,10 @@ use stq_types::*;
 use super::{ApiFuture, Initiator};
 
 use config;
+use errors::Error;
 use http::HttpClient;
 use models::*;
+use services::parse_validation_errors;
 
 pub trait OrdersMicroservice {
     fn convert_cart(&self, payload: ConvertCartPayload) -> ApiFuture<Vec<Order>>;
@@ -34,21 +38,42 @@ pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
 impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceImpl<T> {
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>> {
         let url = format!("{}/roles/by-id/{}", self.orders_url(), role_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting role in orders microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
     fn create_role(&self, initiator: Option<Initiator>, payload: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>> {
         let url = format!("{}/{}", self.orders_url(), StqModel::Role.to_url());
-        super::request::<_, RoleEntry<NewOrdersRole>, RoleEntry<NewOrdersRole>>(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        Box::new(
+            super::request::<_, RoleEntry<NewOrdersRole>, RoleEntry<NewOrdersRole>>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(|e| {
+                e.context("Creating role in orders microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
     fn convert_cart(&self, payload: ConvertCartPayload) -> ApiFuture<Vec<Order>> {
         let url = format!("{}/{}/create_from_cart", self.orders_url(), StqModel::Order.to_url());
-        super::request::<_, ConvertCartPayload, Vec<Order>>(self.http_client.clone(), Method::Post, url, Some(payload), None)
+        Box::new(
+            super::request::<_, ConvertCartPayload, Vec<Order>>(self.http_client.clone(), Method::Post, url, Some(payload), None).map_err(
+                |e| {
+                    parse_validation_errors(e.into(), &["order"])
+                        .context("Converting cart in orders microservice failed.")
+                        .context(Error::HttpClient)
+                        .into()
+                },
+            ),
+        )
     }
 
     fn get_order(&self, initiator: Option<Initiator>, order_id: OrderIdentifier) -> ApiFuture<Option<Order>> {
@@ -59,7 +84,16 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
             order_identifier_route(&order_id),
         );
 
-        super::request::<_, (), Option<Order>>(self.http_client.clone(), Method::Get, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), Option<Order>>(self.http_client.clone(), Method::Get, url, None, initiator.map(Into::into)).map_err(
+                move |e| {
+                    parse_validation_errors(e.into(), &["order"])
+                        .context(format!("Getting order with id {:?} in orders microservice failed.", order_id))
+                        .context(Error::HttpClient)
+                        .into()
+                },
+            ),
+        )
     }
 
     fn set_order_state(
@@ -74,31 +108,55 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
             StqModel::Order.to_url(),
             order_identifier_route(&order_id),
         );
-        super::request::<_, UpdateStatePayload, Option<Order>>(
-            self.http_client.clone(),
-            Method::Put,
-            url,
-            Some(payload),
-            initiator.map(Into::into),
+        let order_state = payload.state;
+        Box::new(
+            super::request::<_, UpdateStatePayload, Option<Order>>(
+                self.http_client.clone(),
+                Method::Put,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            ).map_err(move |e| {
+                parse_validation_errors(e.into(), &["order"])
+                    .context(format!(
+                        "Setting order with id {:?} state {} in orders microservice failed.",
+                        order_id, order_state
+                    )).context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn create_buy_now(&self, buy_now: BuyNow, conversion_id: Option<ConversionId>) -> ApiFuture<Vec<Order>> {
         let url = format!("{}/{}/create_buy_now", self.orders_url(), StqModel::Order.to_url(),);
 
-        super::request::<_, BuyNowPayload, Vec<Order>>(
-            self.http_client.clone(),
-            Method::Post,
-            url,
-            Some(BuyNowPayload { conversion_id, buy_now }),
-            None,
+        Box::new(
+            super::request::<_, BuyNowPayload, Vec<Order>>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(BuyNowPayload { conversion_id, buy_now }),
+                None,
+            ).map_err(|e| {
+                parse_validation_errors(e.into(), &["order"])
+                    .context("Create order from buy now data in orders microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 
     fn revert_convert_cart(&self, initiator: Initiator, payload: ConvertCartRevert) -> ApiFuture<CartHash> {
         let url = format!("{}/{}/create_buy_now/revert", self.orders_url(), StqModel::Order.to_url(),);
         let headers = initiator.into();
-        super::request::<_, ConvertCartRevert, CartHash>(self.http_client.clone(), Method::Post, url, Some(payload), Some(headers))
+        Box::new(
+            super::request::<_, ConvertCartRevert, CartHash>(self.http_client.clone(), Method::Post, url, Some(payload), Some(headers))
+                .map_err(|e| {
+                    e.context("Revert convert cart in orders microservice failed.")
+                        .context(Error::HttpClient)
+                        .into()
+                }),
+        )
     }
 }
 

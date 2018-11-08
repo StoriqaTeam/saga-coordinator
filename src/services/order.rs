@@ -92,10 +92,6 @@ impl OrderServiceImpl {
                 receiver_email: convert_cart.convert_cart.receiver_email,
                 coupons: convert_cart.convert_cart.coupons,
                 delivery_info: convert_cart.convert_cart.delivery_info,
-            }).map_err(|e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context("Converting cart in orders microservice failed.")
-                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -112,11 +108,7 @@ impl OrderServiceImpl {
 
         self.stores_microservice
             .use_coupon(Initiator::Superadmin, coupon_id, customer)
-            .map_err(|e| {
-                e.context("Commit coupon for user in stores microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).then(|res| match res {
+            .then(|res| match res {
                 Ok(used_coupon) => Ok((self, used_coupon)),
                 Err(e) => Err((self, e)),
             })
@@ -157,11 +149,7 @@ impl OrderServiceImpl {
 
         self.orders_microservice
             .create_buy_now(input, Some(conversion_id))
-            .map_err(|e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context("Create order from buy now data in orders microservice failed.")
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
@@ -184,11 +172,7 @@ impl OrderServiceImpl {
 
         self.billing_microservice
             .create_invoice(Initiator::Superadmin, input.clone())
-            .map_err(|e| {
-                e.context("Creating invoice in billing microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
@@ -476,11 +460,7 @@ impl OrderServiceImpl {
             let res = self
                 .orders_microservice
                 .get_order(Some(order_info.customer_id.into()), OrderIdentifier::Id(order_info.order_id))
-                .map_err(|e| {
-                    e.context("Setting new status in orders microservice error occured.")
-                        .context(Error::HttpClient)
-                        .into()
-                }).and_then(move |order| {
+                .and_then(move |order| {
                     order
                         .ok_or(
                             format_err!("Order is not found in orders microservice! id: {}", order_id)
@@ -493,15 +473,7 @@ impl OrderServiceImpl {
                         Either::A(future::ok(None))
                     } else {
                         let payload: UpdateStatePayload = order_info.clone().into();
-                        Either::B(
-                            orders_microservice
-                                .set_order_state(Some(Initiator::Superadmin), OrderIdentifier::Id(order.id), payload)
-                                .map_err(|e| {
-                                    e.context("Setting new status in orders microservice error occured.")
-                                        .context(Error::HttpClient)
-                                        .into()
-                                }),
-                        )
+                        Either::B(orders_microservice.set_order_state(Some(Initiator::Superadmin), OrderIdentifier::Id(order.id), payload))
                     }
                 });
             orders_futures.push(res);
@@ -523,11 +495,7 @@ impl OrderServiceImpl {
         let orders_microservice = self.orders_microservice.clone();
         self.orders_microservice
             .get_order(None, OrderIdentifier::Slug(order_slug))
-            .map_err(move |e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
-                    .into()
-            }).and_then(move |order| {
+            .and_then(move |order| {
                 if let Some(order) = order {
                     Either::A(if order.state == order_state {
                         // if this status already set, do not update
@@ -538,24 +506,15 @@ impl OrderServiceImpl {
                             "order slug: {:?} status: {:?} start request update on orders",
                             order_slug, order_state
                         );
-                        Either::B(
-                            orders_microservice
-                                .set_order_state(
-                                    None,
-                                    OrderIdentifier::Slug(order_slug),
-                                    UpdateStatePayload {
-                                        state: order_state,
-                                        comment,
-                                        track_id,
-                                    },
-                                ).map_err(move |e| {
-                                    parse_validation_errors(e.into(), &["order"])
-                                        .context(format!(
-                                            "Setting order with slug {} state {} in orders microservice failed.",
-                                            order_slug, order_state
-                                        )).into()
-                                }),
-                        )
+                        Either::B(orders_microservice.set_order_state(
+                            None,
+                            OrderIdentifier::Slug(order_slug),
+                            UpdateStatePayload {
+                                state: order_state,
+                                comment,
+                                track_id,
+                            },
+                        ))
                     })
                 } else {
                     Either::B(future::err(

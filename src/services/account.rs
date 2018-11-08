@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
-use failure::Fail;
 use futures;
 use futures::future;
 use futures::prelude::*;
@@ -97,11 +96,7 @@ impl AccountServiceImpl {
         let res = self
             .users_microservice
             .create_user(Some(Initiator::Superadmin), create_profile)
-            .map_err(|e| {
-                e.context("Creating user in users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg));
@@ -129,11 +124,7 @@ impl AccountServiceImpl {
         let res = self
             .users_microservice
             .create_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::UsersRoleSetComplete(new_role_id));
@@ -161,11 +152,7 @@ impl AccountServiceImpl {
         let res = self
             .stores_microservice
             .create_stores_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in stores microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::StoreRoleSetComplete(new_role_id));
@@ -193,11 +180,7 @@ impl AccountServiceImpl {
         let res = self
             .billing_microservice
             .create_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in billing microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingRoleSetComplete(new_role_id));
@@ -225,11 +208,7 @@ impl AccountServiceImpl {
         let res = self
             .delivery_microservice
             .create_delivery_role(Some(Initiator::Superadmin), role)
-            .map_err(|e| {
-                e.context("Creating role in delivery microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::DeliveryRoleSetComplete(new_role_id));
@@ -255,11 +234,7 @@ impl AccountServiceImpl {
         let res = self
             .billing_microservice
             .create_user_merchant(Some(Initiator::Superadmin), payload)
-            .map_err(|e| {
-                e.context("Creating merchant in billing microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
@@ -291,11 +266,7 @@ impl AccountServiceImpl {
         let res = self
             .users_microservice
             .create_email_verify_token(Some(user_id.into()), reset)
-            .map_err(|e| {
-                e.context("Creating email verify token in users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |token| {
+            .and_then(move |token| {
                 let user = EmailUser {
                     email: user.email.clone(),
                     first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -306,13 +277,7 @@ impl AccountServiceImpl {
                     verify_email_path,
                     token,
                 };
-                notifications_microservice
-                    .email_verification(Some(Initiator::Superadmin), email)
-                    .map_err(|e| {
-                        e.context("Sending email to notifications microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+                notifications_microservice.email_verification(Some(Initiator::Superadmin), email)
             }).then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
@@ -462,11 +427,7 @@ impl AccountService for AccountServiceImpl {
         let res = self
             .users_microservice
             .get_by_email(Some(Initiator::Superadmin), &input.email)
-            .map_err(|e| {
-                e.context("Receiving user from users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |user| {
+            .and_then(move |user| {
                 if let Some(user) = user {
                     if user.is_blocked {
                         return Box::new(future::err(
@@ -478,11 +439,7 @@ impl AccountService for AccountServiceImpl {
                     Box::new(
                         users_microservice
                             .create_password_reset_token(Some(user_id.into()), input)
-                            .map_err(|e| {
-                                e.context("Creating password reset token in users microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            }).and_then(move |token| {
+                            .and_then(move |token| {
                                 let user = EmailUser {
                                     email: user.email.clone(),
                                     first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -493,9 +450,7 @@ impl AccountService for AccountServiceImpl {
                                     reset_password_path,
                                     token,
                                 };
-                                notifications_microservice
-                                    .password_reset(Some(Initiator::Superadmin), email)
-                                    .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
+                                notifications_microservice.password_reset(Some(Initiator::Superadmin), email)
                             }),
                     )
                 } else {
@@ -519,38 +474,27 @@ impl AccountService for AccountServiceImpl {
         let res = self
             .users_microservice
             .apply_password_reset_token(Some(Initiator::Superadmin), input)
-            .map_err(|e| {
-                e.context("Applying password reset token in users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |reset_token| {
+            .and_then(move |reset_token| {
                 users_microservice
                     .get_by_email(Some(Initiator::Superadmin), &reset_token.email)
-                    .map_err(|e| {
-                        e.context("Receiving user from users microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    }).map(|user| (user, reset_token.token))
-            }).and_then({
-                move |(user, token)| {
-                    if let Some(user) = user {
-                        let user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = ApplyPasswordResetForUser { user, cluster_url };
-                        Box::new(
-                            notifications_microservice
-                                .apply_password_reset(Some(Initiator::Superadmin), email)
-                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
-                                .map(|_| token),
-                        )
-                    } else {
-                        Box::new(future::err(
-                            Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
-                        )) as Box<Future<Item = String, Error = FailureError>>
-                    }
+                    .map(|user| (user, reset_token.token))
+            }).and_then(move |(user, token)| {
+                if let Some(user) = user {
+                    let user = EmailUser {
+                        email: user.email.clone(),
+                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                    };
+                    let email = ApplyPasswordResetForUser { user, cluster_url };
+                    Box::new(
+                        notifications_microservice
+                            .apply_password_reset(Some(Initiator::Superadmin), email)
+                            .map(|_| token),
+                    )
+                } else {
+                    Box::new(future::err(
+                        Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                    )) as Box<Future<Item = String, Error = FailureError>>
                 }
             }).then(|res| match res {
                 Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
@@ -575,11 +519,7 @@ impl AccountService for AccountServiceImpl {
         let res = self
             .users_microservice
             .get_by_email(Some(Initiator::Superadmin), &input.email)
-            .map_err(|e| {
-                e.context("Receiving user from users microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).and_then(move |user| {
+            .and_then(move |user| {
                 if let Some(user) = user {
                     if user.is_blocked {
                         return Box::new(future::err(
@@ -590,11 +530,7 @@ impl AccountService for AccountServiceImpl {
                     Box::new(
                         users_microservice
                             .create_email_verify_token(Some(Initiator::Superadmin), input)
-                            .map_err(|e| {
-                                e.context("Creating email verification token in users microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            }).and_then(move |token| {
+                            .and_then(move |token| {
                                 let user = EmailUser {
                                     email: user.email.clone(),
                                     first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -605,9 +541,7 @@ impl AccountService for AccountServiceImpl {
                                     verify_email_path,
                                     token,
                                 };
-                                notifications_microservice
-                                    .email_verification(Some(Initiator::Superadmin), email)
-                                    .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
+                                notifications_microservice.email_verification(Some(Initiator::Superadmin), email)
                             }),
                     )
                 } else {
@@ -628,11 +562,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(
             self.users_microservice
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
-                .map_err(|e| {
-                    e.context("Applying email verification token in users microservice failed.")
-                        .context(Error::HttpClient)
-                        .into()
-                }).and_then({
+                .and_then({
                     move |email_apply_token| {
                         let EmailVerifyApplyToken { user, token } = email_apply_token;
                         let email_user = EmailUser {
@@ -645,7 +575,6 @@ impl AccountService for AccountServiceImpl {
                         Box::new(
                             notifications_microservice
                                 .apply_email_verification(Some(Initiator::Superadmin), email)
-                                .map_err(|e| e.context("Sending notification failed.").into())
                                 .map(|_| token),
                         )
                     }
