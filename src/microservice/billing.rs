@@ -11,6 +11,8 @@ use http::HttpClient;
 use models::*;
 
 pub trait BillingMicroservice {
+    fn delete_user_merchant(&self, initiator: Option<Initiator>, user_id: UserId) -> ApiFuture<MerchantId>;
+    fn create_user_merchant(&self, initiator: Option<Initiator>, payload: CreateUserMerchantPayload) -> ApiFuture<Merchant>;
     fn delete_store_merchant(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<MerchantId>;
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<BillingRole>>;
     fn create_store_merchant(&self, initiator: Option<Initiator>, payload: CreateStoreMerchantPayload) -> ApiFuture<Merchant>;
@@ -25,6 +27,22 @@ pub struct BillingMicroserviceImpl<T: HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroserviceImpl<T> {
+    fn delete_user_merchant(&self, initiator: Option<Initiator>, user_id: UserId) -> ApiFuture<MerchantId> {
+        let url = format!("{}/merchants/user/{}", self.billing_url(), user_id);
+        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+    }
+
+    fn create_user_merchant(&self, initiator: Option<Initiator>, payload: CreateUserMerchantPayload) -> ApiFuture<Merchant> {
+        let url = format!("{}/merchants/user", self.billing_url());
+        super::request(
+            self.http_client.clone(),
+            Method::Post,
+            url,
+            Some(payload),
+            initiator.map(Into::into),
+        )
+    }
+
     fn delete_store_merchant(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<MerchantId> {
         let url = format!("{}/merchants/store/{}", self.billing_url(), store_id);
         super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))

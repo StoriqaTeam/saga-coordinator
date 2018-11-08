@@ -91,7 +91,15 @@ impl Controller for ControllerImpl {
 
         let config = self.config.clone();
 
-        let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
+        let account_service = AccountServiceImpl::new(
+            http_client.clone(),
+            config.clone(),
+            stores_microservice.clone(),
+            billing_microservice.clone(),
+            delivery_microservice.clone(),
+            users_microservice.clone(),
+            notifications_microservice.clone(),
+        );
         let store_service = StoreServiceImpl::new(
             config.clone(),
             orders_microservice.clone(),

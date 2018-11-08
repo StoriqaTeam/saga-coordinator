@@ -8,19 +8,15 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
-use hyper::Method;
-use serde_json;
 
 use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::request_util::Currency as CurrencyHeader;
-use stq_routes::model::Model as StqModel;
-use stq_routes::service::Service as StqService;
 use stq_static_resources::*;
-use stq_types::{BillingRole, DeliveryRole, MerchantId, RoleId, SagaId, StoresRole, UserId, UsersRole};
+use stq_types::{BillingRole, DeliveryRole, RoleId, SagaId, StoresRole, UserId, UsersRole};
 
 use super::parse_validation_errors;
 use config;
 use errors::Error;
+use microservice::*;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -34,15 +30,37 @@ pub trait AccountService {
 
 /// Account service, responsible for Creating user
 pub struct AccountServiceImpl {
+    pub stores_microservice: Arc<StoresMicroservice>,
+    pub billing_microservice: Arc<BillingMicroservice>,
+    pub delivery_microservice: Arc<DeliveryMicroservice>,
+    pub users_microservice: Arc<UsersMicroservice>,
+    pub notifications_microservice: Arc<NotificationsMicroservice>,
     pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateProfileOperationLog>>,
 }
 
 impl AccountServiceImpl {
-    pub fn new(http_client: HttpClientHandle, config: config::Config) -> Self {
+    pub fn new(
+        http_client: HttpClientHandle,
+        config: config::Config,
+        stores_microservice: Arc<StoresMicroservice>,
+        billing_microservice: Arc<BillingMicroservice>,
+        delivery_microservice: Arc<DeliveryMicroservice>,
+        users_microservice: Arc<UsersMicroservice>,
+        notifications_microservice: Arc<NotificationsMicroservice>,
+    ) -> Self {
         let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
-        Self { http_client, config, log }
+        Self {
+            http_client,
+            config,
+            log,
+            stores_microservice,
+            billing_microservice,
+            delivery_microservice,
+            users_microservice,
+            notifications_microservice,
+        }
     }
 
     fn create_user(self, input: SagaCreateProfile, saga_id_arg: SagaId) -> ServiceFuture<Self, User> {
@@ -76,26 +94,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::AccountCreationStart(saga_id_arg));
 
-        let client = self.http_client.clone();
-        let users_url = self.config.service_url(StqService::Users);
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can create user
-
-        let res = serde_json::to_string(&create_profile)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<User>(
-                        Method::Post,
-                        format!("{}/{}", users_url, StqModel::User.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating user in users microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .users_microservice
+            .create_user(Some(Initiator::Superadmin), create_profile)
+            .map_err(|e| {
+                e.context("Creating user in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -121,27 +126,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::UsersRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to users
-
-        let client = self.http_client.clone();
-        let users_url = self.config.service_url(StqService::Users);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<UsersRole>>(
-                        Method::Post,
-                        format!("{}/{}", users_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in users microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .users_microservice
+            .create_role(Some(Initiator::Superadmin), role)
+            .map_err(|e| {
+                e.context("Creating role in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -167,28 +158,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::StoreRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-        headers.set(Authorization("1".to_string())); // only super admin can add role to stores
-
-        let client = self.http_client.clone();
-        let stores_url = self.config.service_url(StqService::Stores);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<StoresRole>>(
-                        Method::Post,
-                        format!("{}/{}", stores_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in stores microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .stores_microservice
+            .create_stores_role(Some(Initiator::Superadmin), role)
+            .map_err(|e| {
+                e.context("Creating role in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -214,27 +190,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::BillingRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to billing
-
-        let client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<BillingRole>>(
-                        Method::Post,
-                        format!("{}/{}", billing_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .billing_microservice
+            .create_role(Some(Initiator::Superadmin), role)
+            .map_err(|e| {
+                e.context("Creating role in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -260,27 +222,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::DeliveryRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to delivery
-
-        let client = self.http_client.clone();
-        let delivery_url = self.config.service_url(StqService::Delivery);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<DeliveryRole>>(
-                        Method::Post,
-                        format!("{}/{}", delivery_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in delivery microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .delivery_microservice
+            .create_delivery_role(Some(Initiator::Superadmin), role)
+            .map_err(|e| {
+                e.context("Creating role in delivery microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -304,23 +252,13 @@ impl AccountServiceImpl {
             .unwrap()
             .push(CreateProfileOperationStage::BillingCreateMerchantStart(user_id));
 
-        let client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-
-        let res = serde_json::to_string(&payload)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                let mut headers = Headers::new();
-                headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
-
-                client
-                    .request::<Merchant>(Method::Post, format!("{}/merchants/user", billing_url), Some(body), Some(headers))
-                    .map_err(|e| {
-                        e.context("Creating merchant in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .billing_microservice
+            .create_user_merchant(Some(Initiator::Superadmin), payload)
+            .map_err(|e| {
+                e.context("Creating merchant in billing microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -336,8 +274,6 @@ impl AccountServiceImpl {
 
     fn notify_user(self, user: User, device: Option<Device>) -> ServiceFuture<Self, ()> {
         debug!("Notifiing user in notificatins microservice");
-        let users_url = self.config.service_url(StqService::Users);
-        let notification_url = self.config.service_url(StqService::Notifications);
         let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
         let verify_email_path = device
             .map(|device| match device {
@@ -346,53 +282,37 @@ impl AccountServiceImpl {
                 Device::Android => android,
             }).unwrap_or_else(|| web);
 
-        let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
         let reset = ResetRequest {
             email: user.email.clone(),
             device: device,
         };
         let user_id = user.id;
-        let res = serde_json::to_string(&reset)
-            .map_err(From::from)
-            .into_future()
-            .and_then({
-                let client = self.http_client.clone();
-                move |body| {
-                    let mut headers = Headers::new();
-                    headers.set(Authorization(user_id.to_string()));
-                    client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                        e.context("Creating email verify token in users microservice failed.")
+        let notifications_microservice = self.notifications_microservice.clone();
+        let res = self
+            .users_microservice
+            .create_email_verify_token(Some(user_id.into()), reset)
+            .map_err(|e| {
+                e.context("Creating email verify token in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }).and_then(move |token| {
+                let user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = EmailVerificationForUser {
+                    user,
+                    verify_email_path,
+                    token,
+                };
+                notifications_microservice
+                    .email_verification(Some(Initiator::Superadmin), email)
+                    .map_err(|e| {
+                        e.context("Sending email to notifications microservice failed.")
                             .context(Error::HttpClient)
                             .into()
                     })
-                }
-            }).and_then({
-                let client = self.http_client.clone();
-                move |token| {
-                    let user = EmailUser {
-                        email: user.email.clone(),
-                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                    };
-                    let email = EmailVerificationForUser {
-                        user,
-                        verify_email_path,
-                        token,
-                    };
-                    let url = format!("{}/{}/email-verification", notification_url, StqModel::User.to_url(),);
-                    serde_json::to_string(&email)
-                        .map_err(From::from)
-                        .into_future()
-                        .and_then(move |body| {
-                            let mut headers = Headers::new();
-                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                            client.request::<()>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                                e.context("Sending email to notifications microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            })
-                        })
-                }
             }).then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
@@ -431,27 +351,20 @@ impl AccountServiceImpl {
     // Contains reversal of account creation
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let http_client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-        let users_url = self.config.service_url(StqService::Users);
-        let stores_url = self.config.service_url(StqService::Stores);
-        let delivery_url = self.config.service_url(StqService::Delivery);
+
+        let stores_microservice = self.stores_microservice.clone();
+        let billing_microservice = self.billing_microservice.clone();
+        let delivery_microservice = self.delivery_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
 
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
                 CreateProfileOperationStage::AccountCreationComplete(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin can delete user
-
                     Box::new(
-                        http_client
-                            .request::<User>(
-                                Method::Delete,
-                                format!("{}/user_by_saga_id/{}", users_url, saga_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        users_microservice
+                            .delete_user(Some(Initiator::Superadmin), saga_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
@@ -461,77 +374,47 @@ impl AccountServiceImpl {
                     headers.set(Authorization("1".to_string())); // only super admin delete user role
 
                     Box::new(
-                        http_client
-                            .request::<NewRole<UsersRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", users_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        users_microservice
+                            .delete_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::StoreRoleSetComplete(role_id) => {
                     debug!("Reverting stores users role, role_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
                     Box::new(
-                        http_client
-                            .request::<NewRole<StoresRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", stores_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        stores_microservice
+                            .delete_stores_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, role_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
                     Box::new(
-                        http_client
-                            .request::<NewRole<BillingRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", billing_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        billing_microservice
+                            .delete_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::DeliveryRoleSetComplete(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
-
                     Box::new(
-                        http_client
-                            .request::<NewRole<DeliveryRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", delivery_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        delivery_microservice
+                            .delete_delivery_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateProfileOperationStage::BillingCreateMerchantComplete(user_id) => {
                     debug!("Reverting merchant, user_id: {}", user_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete merchant
-
                     Box::new(
-                        http_client
-                            .request::<MerchantId>(
-                                Method::Delete,
-                                format!("{}/merchants/user/{}", billing_url, user_id.0),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        billing_microservice
+                            .delete_user_merchant(Some(Initiator::Superadmin), user_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
@@ -564,8 +447,6 @@ impl AccountService for AccountServiceImpl {
     }
 
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
-        let users_url = self.config.service_url(StqService::Users);
-        let notification_url = self.config.service_url(StqService::Notifications);
         let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.clone();
         let reset_password_path = input
             .device
@@ -576,13 +457,11 @@ impl AccountService for AccountServiceImpl {
                 Device::Android => android,
             }).unwrap_or_else(|| web);
 
-        let client = self.http_client.clone();
-
-        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), input.email);
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string()));
-        let res = client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
+        let users_microservice = self.users_microservice.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let res = self
+            .users_microservice
+            .get_by_email(Some(Initiator::Superadmin), &input.email)
             .map_err(|e| {
                 e.context("Receiving user from users microservice failed.")
                     .context(Error::HttpClient)
@@ -596,48 +475,27 @@ impl AccountService for AccountServiceImpl {
                     }
 
                     let user_id = user.id;
-                    let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
-
                     Box::new(
-                        serde_json::to_string(&input)
-                            .map_err(From::from)
-                            .into_future()
-                            .and_then({
-                                let client = client.clone();
-                                move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization(user_id.to_string()));
-                                    client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                                        e.context("Creating password reset token in users microservice failed.")
-                                            .context(Error::HttpClient)
-                                            .into()
-                                    })
-                                }
-                            }).and_then({
-                                let client = client.clone();
-                                move |token| {
-                                    let user = EmailUser {
-                                        email: user.email.clone(),
-                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                                    };
-                                    let email = PasswordResetForUser {
-                                        user,
-                                        reset_password_path,
-                                        token,
-                                    };
-                                    let url = format!("{}/{}/password-reset", notification_url, StqModel::User.to_url());
-                                    serde_json::to_string(&email)
-                                        .map_err(From::from)
-                                        .into_future()
-                                        .and_then(move |body| {
-                                            let mut headers = Headers::new();
-                                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                            client
-                                                .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
-                                        })
-                                }
+                        users_microservice
+                            .create_password_reset_token(Some(user_id.into()), input)
+                            .map_err(|e| {
+                                e.context("Creating password reset token in users microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            }).and_then(move |token| {
+                                let user = EmailUser {
+                                    email: user.email.clone(),
+                                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                                };
+                                let email = PasswordResetForUser {
+                                    user,
+                                    reset_password_path,
+                                    token,
+                                };
+                                notifications_microservice
+                                    .password_reset(Some(Initiator::Superadmin), email)
+                                    .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                             }),
                     )
                 } else {
@@ -654,82 +512,54 @@ impl AccountService for AccountServiceImpl {
     }
 
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String> {
-        let users_url = self.config.service_url(StqService::Users);
-        let notification_url = self.config.service_url(StqService::Notifications);
-        let client = self.http_client.clone();
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/password_reset_token", users_url, StqModel::User.to_url());
-        Box::new(
-            serde_json::to_string(&input)
-                .map_err(From::from)
-                .into_future()
-                .and_then({
-                    let client = client.clone();
-                    move |body| {
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string()));
-                        client
-                            .request::<ResetApplyToken>(Method::Put, url, Some(body), Some(headers))
-                            .map_err(|e| {
-                                e.context("Applying password reset token in users microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            })
+
+        let users_microservice = self.users_microservice.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let res = self
+            .users_microservice
+            .apply_password_reset_token(Some(Initiator::Superadmin), input)
+            .map_err(|e| {
+                e.context("Applying password reset token in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }).and_then(move |reset_token| {
+                users_microservice
+                    .get_by_email(Some(Initiator::Superadmin), &reset_token.email)
+                    .map_err(|e| {
+                        e.context("Receiving user from users microservice failed.")
+                            .context(Error::HttpClient)
+                            .into()
+                    }).map(|user| (user, reset_token.token))
+            }).and_then({
+                move |(user, token)| {
+                    if let Some(user) = user {
+                        let user = EmailUser {
+                            email: user.email.clone(),
+                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                        };
+                        let email = ApplyPasswordResetForUser { user, cluster_url };
+                        Box::new(
+                            notifications_microservice
+                                .apply_password_reset(Some(Initiator::Superadmin), email)
+                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
+                                .map(|_| token),
+                        )
+                    } else {
+                        Box::new(future::err(
+                            Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
+                        )) as Box<Future<Item = String, Error = FailureError>>
                     }
-                }).and_then({
-                    let client = client.clone();
-                    move |reset_token| {
-                        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), reset_token.email);
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string()));
-                        client
-                            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-                            .map_err(|e| {
-                                e.context("Receiving user from users microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            }).map(|user| (user, reset_token.token))
-                    }
-                }).and_then({
-                    let client = client.clone();
-                    move |(user, token)| {
-                        if let Some(user) = user {
-                            let user = EmailUser {
-                                email: user.email.clone(),
-                                first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                                last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                            };
-                            let email = ApplyPasswordResetForUser { user, cluster_url };
-                            let url = format!("{}/{}/apply-password-reset", notification_url, StqModel::User.to_url());
-                            Box::new(
-                                serde_json::to_string(&email)
-                                    .map_err(From::from)
-                                    .into_future()
-                                    .and_then(move |body| {
-                                        let mut headers = Headers::new();
-                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                        client
-                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                            .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
-                                            .map(|_| token)
-                                    }),
-                            )
-                        } else {
-                            Box::new(future::err(
-                                Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
-                            )) as Box<Future<Item = String, Error = FailureError>>
-                        }
-                    }
-                }).then(|res| match res {
-                    Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
-                    Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
-                }),
-        )
+                }
+            }).then(|res| match res {
+                Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
+                Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
+            });
+        Box::new(res)
     }
 
     fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
-        let users_url = self.config.service_url(StqService::Users);
-        let notification_url = self.config.service_url(StqService::Notifications);
         let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
         let verify_email_path = input
             .device
@@ -740,13 +570,11 @@ impl AccountService for AccountServiceImpl {
                 Device::Android => android,
             }).unwrap_or_else(|| web);
 
-        let client = self.http_client.clone();
-
-        let url = format!("{}/{}/by_email?email={}", users_url, StqModel::User.to_url(), input.email);
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string()));
-        let res = client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
+        let users_microservice = self.users_microservice.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let res = self
+            .users_microservice
+            .get_by_email(Some(Initiator::Superadmin), &input.email)
             .map_err(|e| {
                 e.context("Receiving user from users microservice failed.")
                     .context(Error::HttpClient)
@@ -759,49 +587,27 @@ impl AccountService for AccountServiceImpl {
                         )) as Box<Future<Item = (), Error = FailureError>>;
                     }
 
-                    let user_id = user.id;
-                    let url = format!("{}/{}/email_verify_token", users_url, StqModel::User.to_url());
-
                     Box::new(
-                        serde_json::to_string(&input)
-                            .map_err(From::from)
-                            .into_future()
-                            .and_then({
-                                let client = client.clone();
-                                move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization(user_id.to_string()));
-                                    client.request::<String>(Method::Post, url, Some(body), Some(headers)).map_err(|e| {
-                                        e.context("Creating email verification token in users microservice failed.")
-                                            .context(Error::HttpClient)
-                                            .into()
-                                    })
-                                }
-                            }).and_then({
-                                let client = client.clone();
-                                move |token| {
-                                    let user = EmailUser {
-                                        email: user.email.clone(),
-                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                                    };
-                                    let email = EmailVerificationForUser {
-                                        user,
-                                        verify_email_path,
-                                        token,
-                                    };
-                                    let url = format!("{}/{}/email-verification", notification_url, StqModel::User.to_url());
-                                    serde_json::to_string(&email)
-                                        .map_err(From::from)
-                                        .into_future()
-                                        .and_then(move |body| {
-                                            let mut headers = Headers::new();
-                                            headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                            client
-                                                .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                                .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
-                                        })
-                                }
+                        users_microservice
+                            .create_email_verify_token(Some(Initiator::Superadmin), input)
+                            .map_err(|e| {
+                                e.context("Creating email verification token in users microservice failed.")
+                                    .context(Error::HttpClient)
+                                    .into()
+                            }).and_then(move |token| {
+                                let user = EmailUser {
+                                    email: user.email.clone(),
+                                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                                };
+                                let email = EmailVerificationForUser {
+                                    user,
+                                    verify_email_path,
+                                    token,
+                                };
+                                notifications_microservice
+                                    .email_verification(Some(Initiator::Superadmin), email)
+                                    .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into())
                             }),
                     )
                 } else {
@@ -818,30 +624,15 @@ impl AccountService for AccountServiceImpl {
     }
 
     fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
-        let users_url = self.config.service_url(StqService::Users);
-        let notification_url = self.config.service_url(StqService::Notifications);
-        let client = self.http_client.clone();
-
-        let url = format!("{}/{}/email_verify_token?token={}", users_url, StqModel::User.to_url(), input.token);
+        let notifications_microservice = self.notifications_microservice.clone();
         Box::new(
-            serde_json::to_string(&input)
-                .map_err(From::from)
-                .into_future()
-                .and_then({
-                    let client = client.clone();
-                    move |body| {
-                        let mut headers = Headers::new();
-                        headers.set(Authorization("1".to_string()));
-                        client
-                            .request::<EmailVerifyApplyToken>(Method::Put, url, Some(body), Some(headers))
-                            .map_err(|e| {
-                                e.context("Applying email verification token in users microservice failed.")
-                                    .context(Error::HttpClient)
-                                    .into()
-                            })
-                    }
+            self.users_microservice
+                .apply_email_verify_token(Some(Initiator::Superadmin), input)
+                .map_err(|e| {
+                    e.context("Applying email verification token in users microservice failed.")
+                        .context(Error::HttpClient)
+                        .into()
                 }).and_then({
-                    let client = client.clone();
                     move |email_apply_token| {
                         let EmailVerifyApplyToken { user, token } = email_apply_token;
                         let email_user = EmailUser {
@@ -850,19 +641,12 @@ impl AccountService for AccountServiceImpl {
                             last_name: user.last_name.unwrap_or_else(|| "".to_string()),
                         };
                         let email = ApplyEmailVerificationForUser { user: email_user };
-                        let url = format!("{}/{}/apply-email-verification", notification_url, StqModel::User.to_url());
 
                         Box::new(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(|e| e.context("Sending notification failed.").into())
-                                }).map(|_| token),
+                            notifications_microservice
+                                .apply_email_verification(Some(Initiator::Superadmin), email)
+                                .map_err(|e| e.context("Sending notification failed.").into())
+                                .map(|_| token),
                         )
                     }
                 }).then(|res| match res {
