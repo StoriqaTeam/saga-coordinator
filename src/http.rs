@@ -1,7 +1,7 @@
 use failure::Error;
 use futures::prelude::*;
 use hyper;
-use hyper::header::{Authorization, Headers};
+use hyper::header::Headers;
 use serde::de::Deserialize;
 use serde_json;
 
@@ -10,8 +10,6 @@ use stq_http::client::ClientHandle;
 pub struct Response(String);
 
 pub trait HttpClient: Send {
-    fn cloned(&self) -> Box<HttpClient>;
-
     fn request(
         &self,
         method: hyper::Method,
@@ -19,25 +17,9 @@ pub trait HttpClient: Send {
         body: Option<String>,
         headers: Option<Headers>,
     ) -> Box<Future<Item = Response, Error = Error> + Send>;
-
-    fn get(&self, url: String, headers: Option<Headers>) -> Box<Future<Item = Response, Error = Error> + Send> {
-        self.request(hyper::Method::Get, url, None, headers)
-    }
-
-    fn post(&self, url: String, body: Option<String>, headers: Option<Headers>) -> Box<Future<Item = Response, Error = Error> + Send> {
-        self.request(hyper::Method::Post, url, body, headers)
-    }
-
-    fn superadmin(&self) -> Box<HttpClient> {
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string()));
-        Box::new(HttpClientWithDefaultHeaders {
-            inner: self.cloned(),
-            headers,
-        })
-    }
 }
 
+#[derive(Clone)]
 pub struct HttpClientWithDefaultHeaders<S: HttpClient> {
     inner: S,
     headers: Headers,
@@ -78,13 +60,6 @@ impl<S: HttpClient> HttpClient for HttpClientWithDefaultHeaders<S> {
         let request = self.inner.request(method, url, body, headers);
         Box::new(request)
     }
-
-    fn cloned(&self) -> Box<HttpClient> {
-        Box::new(HttpClientWithDefaultHeaders {
-            inner: self.inner.cloned(),
-            headers: self.headers.clone(),
-        })
-    }
 }
 
 impl HttpClient for ClientHandle {
@@ -96,10 +71,6 @@ impl HttpClient for ClientHandle {
         headers: Option<Headers>,
     ) -> Box<Future<Item = Response, Error = Error> + Send> {
         Box::new(self.simple_request(method, url, body, headers).map(Response).map_err(From::from))
-    }
-
-    fn cloned(&self) -> Box<HttpClient> {
-        Box::new(Clone::clone(self))
     }
 }
 
@@ -113,10 +84,6 @@ impl HttpClient for Box<dyn HttpClient> {
     ) -> Box<Future<Item = Response, Error = Error> + Send> {
         (**self).request(method, url, body, headers)
     }
-
-    fn cloned(&self) -> Box<HttpClient> {
-        (**self).cloned()
-    }
 }
 
 impl<T: HttpClient> HttpClient for Box<T> {
@@ -128,10 +95,6 @@ impl<T: HttpClient> HttpClient for Box<T> {
         headers: Option<Headers>,
     ) -> Box<Future<Item = Response, Error = Error> + Send> {
         (**self).request(method, url, body, headers)
-    }
-
-    fn cloned(&self) -> Box<HttpClient> {
-        (**self).cloned()
     }
 }
 
@@ -216,10 +179,6 @@ mod tests {
                 headers,
             });
             Box::new(future::ok(Response(String::new())))
-        }
-
-        fn cloned(&self) -> Box<HttpClient> {
-            Box::new(Clone::clone(self))
         }
     }
 }

@@ -24,15 +24,15 @@ pub trait OrdersMicroservice {
     fn revert_convert_cart(&self, initiator: Initiator, payload: ConvertCartRevert) -> ApiFuture<CartHash>;
 }
 
-pub struct OrdersMicroserviceImpl {
-    http_client: Box<HttpClient>,
+pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
+    http_client: T,
     config: config::Config,
 }
 
-impl OrdersMicroservice for OrdersMicroserviceImpl {
+impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceImpl<T> {
     fn convert_cart(&self, payload: ConvertCartPayload) -> ApiFuture<Vec<Order>> {
         let url = format!("{}/{}/create_from_cart", self.orders_url(), StqModel::Order.to_url());
-        super::request::<_, ConvertCartPayload, Vec<Order>>(self.http_client.cloned(), Method::Post, url, Some(payload), None)
+        super::request::<_, ConvertCartPayload, Vec<Order>>(self.http_client.clone(), Method::Post, url, Some(payload), None)
     }
 
     fn get_order(&self, initiator: Option<Initiator>, order_id: OrderIdentifier) -> ApiFuture<Option<Order>> {
@@ -43,7 +43,7 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
             order_identifier_route(&order_id),
         );
 
-        super::request::<_, (), Option<Order>>(self.http_client.cloned(), Method::Get, url, None, initiator.map(Into::into))
+        super::request::<_, (), Option<Order>>(self.http_client.clone(), Method::Get, url, None, initiator.map(Into::into))
     }
 
     fn set_order_state(
@@ -59,7 +59,7 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
             order_identifier_route(&order_id),
         );
         super::request::<_, UpdateStatePayload, Option<Order>>(
-            self.http_client.cloned(),
+            self.http_client.clone(),
             Method::Put,
             url,
             Some(payload),
@@ -71,7 +71,7 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
         let url = format!("{}/{}/create_buy_now", self.orders_url(), StqModel::Order.to_url(),);
 
         super::request::<_, BuyNowPayload, Vec<Order>>(
-            self.http_client.cloned(),
+            self.http_client.clone(),
             Method::Post,
             url,
             Some(BuyNowPayload { conversion_id, buy_now }),
@@ -82,12 +82,12 @@ impl OrdersMicroservice for OrdersMicroserviceImpl {
     fn revert_convert_cart(&self, initiator: Initiator, payload: ConvertCartRevert) -> ApiFuture<CartHash> {
         let url = format!("{}/{}/create_buy_now/revert", self.orders_url(), StqModel::Order.to_url(),);
         let headers = initiator.into();
-        super::request::<_, ConvertCartRevert, CartHash>(self.http_client.cloned(), Method::Post, url, Some(payload), Some(headers))
+        super::request::<_, ConvertCartRevert, CartHash>(self.http_client.clone(), Method::Post, url, Some(payload), Some(headers))
     }
 }
 
-impl OrdersMicroserviceImpl {
-    pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
+impl<T: 'static + HttpClient + Clone> OrdersMicroserviceImpl<T> {
+    pub fn new(http_client: T, config: config::Config) -> Self {
         Self { http_client, config }
     }
 

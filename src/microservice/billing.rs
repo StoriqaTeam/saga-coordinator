@@ -14,25 +14,25 @@ pub trait BillingMicroservice {
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId>;
 }
 
-pub struct BillingMicroserviceImpl {
-    http_client: Box<HttpClient>,
+pub struct BillingMicroserviceImpl<T: HttpClient + Clone> {
+    http_client: T,
     config: config::Config,
 }
 
-impl BillingMicroservice for BillingMicroserviceImpl {
+impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroserviceImpl<T> {
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId> {
         let url = format!("{}/invoices/by-saga-id/{}", self.billing_url(), saga_id.0);
-        super::request::<_, (), SagaId>(self.http_client.cloned(), Method::Delete, url, None, Some(initiator.into()))
+        super::request::<_, (), SagaId>(self.http_client.clone(), Method::Delete, url, None, Some(initiator.into()))
     }
 
     fn create_invoice(&self, initiator: Initiator, payload: CreateInvoice) -> ApiFuture<Invoice> {
         let url = format!("{}/invoices", self.billing_url());
-        super::request::<_, CreateInvoice, Invoice>(self.http_client.cloned(), Method::Post, url, Some(payload), Some(initiator.into()))
+        super::request::<_, CreateInvoice, Invoice>(self.http_client.clone(), Method::Post, url, Some(payload), Some(initiator.into()))
     }
 }
 
-impl BillingMicroserviceImpl {
-    pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
+impl<T: HttpClient + Clone> BillingMicroserviceImpl<T> {
+    pub fn new(http_client: T, config: config::Config) -> Self {
         Self { http_client, config }
     }
 

@@ -28,7 +28,7 @@ pub use self::billing::*;
 mod warehouses;
 pub use self::warehouses::*;
 
-pub type ApiFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
+pub type ApiFuture<T> = Box<Future<Item = T, Error = Error>>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Initiator {

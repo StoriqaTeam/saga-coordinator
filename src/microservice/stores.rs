@@ -15,25 +15,25 @@ pub trait StoresMicroservice {
     fn get(&self, store: StoreId) -> ApiFuture<Option<Store>>;
 }
 
-pub struct StoresMicroserviceImpl {
-    http_client: Box<HttpClient>,
+pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
+    http_client: T,
     config: config::Config,
 }
 
-impl StoresMicroservice for StoresMicroserviceImpl {
+impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceImpl<T> {
     fn get(&self, store: StoreId) -> ApiFuture<Option<Store>> {
         let url = format!("{}/{}/{}", self.stores_url(), StqModel::Store.to_url(), store);
-        super::request::<_, (), Option<Store>>(self.http_client.cloned(), Method::Get, url, None, None)
+        super::request::<_, (), Option<Store>>(self.http_client.clone(), Method::Get, url, None, None)
     }
 
     fn use_coupon(&self, initiator: Initiator, coupon_id: CouponId, user: UserId) -> ApiFuture<UsedCoupon> {
         let url = format!("{}/{}/{}/users/{}", self.stores_url(), StqModel::Coupon.to_url(), coupon_id, user);
-        super::request::<_, (), UsedCoupon>(self.http_client.cloned(), Method::Post, url, None, Some(initiator.into()))
+        super::request::<_, (), UsedCoupon>(self.http_client.clone(), Method::Post, url, None, Some(initiator.into()))
     }
 }
 
-impl StoresMicroserviceImpl {
-    pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
+impl<T: 'static + HttpClient + Clone> StoresMicroserviceImpl<T> {
+    pub fn new(http_client: T, config: config::Config) -> Self {
         Self { http_client, config }
     }
 

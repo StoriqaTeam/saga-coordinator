@@ -20,12 +20,12 @@ pub trait WarehousesMicroservice {
     ) -> ApiFuture<Stock>;
 }
 
-pub struct WarehousesMicroserviceImpl {
-    http_client: Box<HttpClient>,
+pub struct WarehousesMicroserviceImpl<T: 'static + HttpClient + Clone> {
+    http_client: T,
     config: config::Config,
 }
 
-impl WarehousesMicroservice for WarehousesMicroserviceImpl {
+impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicroserviceImpl<T> {
     fn set_product_in_warehouse(
         &self,
         initiator: Initiator,
@@ -41,7 +41,7 @@ impl WarehousesMicroservice for WarehousesMicroserviceImpl {
         );
 
         super::request::<_, StockSetPayload, Stock>(
-            self.http_client.cloned(),
+            self.http_client.clone(),
             Method::Put,
             url,
             Some(StockSetPayload { quantity }),
@@ -51,12 +51,12 @@ impl WarehousesMicroservice for WarehousesMicroserviceImpl {
 
     fn find_by_product_id(&self, initiator: Initiator, product_id: ProductId) -> ApiFuture<Vec<Stock>> {
         let url = format!("{}/stocks/by-product-id/{}", self.warehouses_url(), product_id);
-        super::request::<_, (), Vec<Stock>>(self.http_client.cloned(), Method::Get, url, None, Some(initiator.into()))
+        super::request::<_, (), Vec<Stock>>(self.http_client.clone(), Method::Get, url, None, Some(initiator.into()))
     }
 }
 
-impl WarehousesMicroserviceImpl {
-    pub fn new(http_client: Box<HttpClient>, config: config::Config) -> Self {
+impl<T: 'static + HttpClient + Clone> WarehousesMicroserviceImpl<T> {
+    pub fn new(http_client: T, config: config::Config) -> Self {
         Self { http_client, config }
     }
 

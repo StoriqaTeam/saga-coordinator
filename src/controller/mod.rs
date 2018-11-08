@@ -31,7 +31,7 @@ use stq_types::UserId;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use http::{HttpClient, HttpClientWithDefaultHeaders};
+use http::HttpClientWithDefaultHeaders;
 use microservice::{
     BillingMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl, UsersMicroserviceImpl,
     WarehousesMicroserviceImpl,
@@ -289,6 +289,6 @@ fn stores_headers(request_headers: &Headers) -> Headers {
     stores_headers
 }
 
-fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> Box<HttpClient> {
-    Box::new(HttpClientWithDefaultHeaders::new(client_handle, headers))
+fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> HttpClientWithDefaultHeaders<HttpClientHandle> {
+    HttpClientWithDefaultHeaders::new(client_handle, headers)
 }
