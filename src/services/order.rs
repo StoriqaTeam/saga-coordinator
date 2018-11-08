@@ -186,65 +186,62 @@ impl OrderServiceImpl {
     fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
-        self.users_microservice.get(Some(user_id.into()), user_id).and_then({
-            move |user| {
-                if let Some(user) = user {
-                    let user = EmailUser {
-                        email: user.email.clone(),
-                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                    };
-                    let email = OrderCreateForUser {
-                        user,
-                        order_slug: order_slug.to_string(),
-                        cluster_url,
-                    };
-                    Either::A(notifications_microservice.order_create_for_user(Initiator::Superadmin, email))
-                } else {
+        self.users_microservice
+            .get(Some(user_id.into()), user_id)
+            .and_then(move |user| {
+                user.ok_or_else(|| {
                     error!(
                         "Sending notification to user can not be done. User with id: {} is not found.",
                         user_id
                     );
-                    Either::B(future::err(
-                        format_err!("User is not found in users microservice.")
-                            .context(Error::NotFound)
-                            .into(),
-                    ))
-                }
-            }
-        })
+                    format_err!("User is not found in users microservice.")
+                        .context(Error::NotFound)
+                        .into()
+                }).into_future()
+            }).and_then(move |user| {
+                let user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = OrderCreateForUser {
+                    user,
+                    order_slug: order_slug.to_string(),
+                    cluster_url,
+                };
+                notifications_microservice.order_create_for_user(Initiator::Superadmin, email)
+            })
     }
 
     fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
-        self.stores_microservice.get(store_id).and_then({
-            move |store| {
-                if let Some(store) = store {
-                    Either::A(if let Some(store_email) = store.email {
-                        let email = OrderCreateForStore {
-                            store_email,
-                            store_id: store_id.to_string(),
-                            order_slug: order_slug.to_string(),
-                            cluster_url,
-                        };
-                        Either::A(notifications_microservice.order_create_for_store(Initiator::Superadmin, email))
-                    } else {
-                        Either::B(future::ok(()))
-                    })
-                } else {
-                    error!(
-                        "Sending notification to store can not be done. Store with id: {} is not found.",
-                        store_id
-                    );
-                    Either::B(future::err(
+        self.stores_microservice
+            .get(store_id)
+            .and_then(move |store| {
+                store
+                    .ok_or_else(|| {
+                        error!(
+                            "Sending notification to store can not be done. Store with id: {} is not found.",
+                            store_id
+                        );
                         format_err!("Store is not found in stores microservice.")
                             .context(Error::NotFound)
-                            .into(),
-                    ))
+                            .into()
+                    }).into_future()
+            }).and_then(move |store| {
+                if let Some(store_email) = store.email {
+                    let email = OrderCreateForStore {
+                        store_email,
+                        store_id: store_id.to_string(),
+                        order_slug: order_slug.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.order_create_for_store(Initiator::Superadmin, email))
+                } else {
+                    Either::B(future::ok(()))
                 }
-            }
-        })
+            })
     }
 
     fn notify_user_update_order(
@@ -255,34 +252,32 @@ impl OrderServiceImpl {
     ) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
-        self.users_microservice.get(Some(user_id.into()), user_id).and_then({
-            move |user| {
-                if let Some(user) = user {
-                    let user = EmailUser {
-                        email: user.email.clone(),
-                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                    };
-                    let email = OrderUpdateStateForUser {
-                        user,
-                        order_slug: order_slug.to_string(),
-                        order_state: order_state.to_string(),
-                        cluster_url,
-                    };
-                    Either::A(notifications_microservice.order_update_state_for_user(Initiator::Superadmin, email))
-                } else {
+        self.users_microservice
+            .get(Some(user_id.into()), user_id)
+            .and_then(move |user| {
+                user.ok_or_else(|| {
                     error!(
                         "Sending notification to user can not be done. User with id: {} is not found.",
                         user_id
                     );
-                    Either::B(future::err(
-                        format_err!("User is not found in users microservice.")
-                            .context(Error::NotFound)
-                            .into(),
-                    ))
-                }
-            }
-        })
+                    format_err!("User is not found in users microservice.")
+                        .context(Error::NotFound)
+                        .into()
+                }).into_future()
+            }).and_then(move |user| {
+                let user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = OrderUpdateStateForUser {
+                    user,
+                    order_slug: order_slug.to_string(),
+                    order_state: order_state.to_string(),
+                    cluster_url,
+                };
+                notifications_microservice.order_update_state_for_user(Initiator::Superadmin, email)
+            })
     }
 
     fn notify_store_update_order(
@@ -293,34 +288,33 @@ impl OrderServiceImpl {
     ) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
-        self.stores_microservice.get(store_id).and_then({
-            move |store| {
-                if let Some(store) = store {
-                    Either::A(if let Some(store_email) = store.email {
-                        let email = OrderUpdateStateForStore {
-                            store_email,
-                            store_id: store.id.to_string(),
-                            order_slug: order_slug.to_string(),
-                            order_state: order_state.to_string(),
-                            cluster_url,
-                        };
-                        Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
-                    } else {
-                        Either::B(future::ok(()))
-                    })
-                } else {
-                    error!(
-                        "Sending notification to store can not be done. Store with id: {} is not found.",
-                        store_id
-                    );
-                    Either::B(future::err(
+        self.stores_microservice
+            .get(store_id)
+            .and_then(move |store| {
+                store
+                    .ok_or_else(|| {
+                        error!(
+                            "Sending notification to store can not be done. Store with id: {} is not found.",
+                            store_id
+                        );
                         format_err!("Store is not found in stores microservice.")
                             .context(Error::NotFound)
-                            .into(),
-                    ))
+                            .into()
+                    }).into_future()
+            }).and_then(move |store| {
+                if let Some(store_email) = store.email {
+                    let email = OrderUpdateStateForStore {
+                        store_email,
+                        store_id: store.id.to_string(),
+                        order_slug: order_slug.to_string(),
+                        order_state: order_state.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
+                } else {
+                    Either::B(future::ok(()))
                 }
-            }
-        })
+            })
     }
 
     fn notify(self, orders: &[Option<Order>]) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
@@ -496,31 +490,30 @@ impl OrderServiceImpl {
         self.orders_microservice
             .get_order(None, OrderIdentifier::Slug(order_slug))
             .and_then(move |order| {
-                if let Some(order) = order {
-                    Either::A(if order.state == order_state {
-                        // if this status already set, do not update
-                        info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
-                        Either::A(future::ok(None))
-                    } else {
-                        info!(
-                            "order slug: {:?} status: {:?} start request update on orders",
-                            order_slug, order_state
-                        );
-                        Either::B(orders_microservice.set_order_state(
-                            None,
-                            OrderIdentifier::Slug(order_slug),
-                            UpdateStatePayload {
-                                state: order_state,
-                                comment,
-                                track_id,
-                            },
-                        ))
-                    })
-                } else {
-                    Either::B(future::err(
+                order
+                    .ok_or(
                         format_err!("Order is not found in orders microservice! slug: {}", order_slug)
                             .context(Error::NotFound)
                             .into(),
+                    ).into_future()
+            }).and_then(move |order| {
+                if order.state == order_state {
+                    // if this status already set, do not update
+                    info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
+                    Either::A(future::ok(None))
+                } else {
+                    info!(
+                        "order slug: {:?} status: {:?} start request update on orders",
+                        order_slug, order_state
+                    );
+                    Either::B(orders_microservice.set_order_state(
+                        None,
+                        OrderIdentifier::Slug(order_slug),
+                        UpdateStatePayload {
+                            state: order_state,
+                            comment,
+                            track_id,
+                        },
                     ))
                 }
             }).then(|res| match res {

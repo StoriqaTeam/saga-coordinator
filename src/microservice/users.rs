@@ -101,7 +101,13 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
 
     fn delete_user(&self, initiator: Option<Initiator>, saga_id: SagaId) -> ApiFuture<User> {
         let url = format!("{}/user_by_saga_id/{}", self.users_url(), saga_id);
-        super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into))
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deleting user in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 
     fn create_email_verify_token(&self, initiator: Option<Initiator>, payload: ResetRequest) -> ApiFuture<String> {

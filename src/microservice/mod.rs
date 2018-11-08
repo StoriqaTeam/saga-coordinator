@@ -45,19 +45,17 @@ fn request<C: HttpClient + 'static, T: Serialize, S: for<'a> Deserialize<'a> + '
     url: String,
     payload: Option<T>,
     headers: Option<Headers>,
-) -> ApiFuture<S> {
+) -> impl Future<Item = S, Error = Error> {
     let body = if let Some(payload) = payload {
         serde_json::to_string::<T>(&payload).map(Some)
     } else {
         Ok(None)
     };
 
-    let result = body
-        .into_future()
+    body.into_future()
         .map_err(From::from)
         .and_then(move |serialized_body| http_client.request(method, url, serialized_body, headers))
-        .and_then(|response| response.parse::<S>().into_future());
-    Box::new(result)
+        .and_then(|response| response.parse::<S>().into_future())
 }
 
 impl From<UserId> for Initiator {
