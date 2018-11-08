@@ -17,7 +17,8 @@ use super::parse_validation_errors;
 use config;
 use errors::Error;
 use microservice::{
-    BillingMicroservice, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice, WarehousesMicroservice,
+    BillingMicroservice, Initiator, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice,
+    WarehousesMicroservice,
 };
 use models::*;
 use services::types::ServiceFuture;
@@ -37,33 +38,30 @@ pub trait OrderService {
 
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
-    pub orders_microservice: Box<OrdersMicroservice>,
-    pub stores_microservice: Box<StoresMicroservice>,
-    pub notifications_microservice: Box<NotificationsMicroservice>,
-    pub users_microservice: Box<UsersMicroservice>,
-    pub billing_microservice: Box<BillingMicroservice>,
-    pub warehouses_microservice: Box<WarehousesMicroservice>,
+    pub orders_microservice: Arc<OrdersMicroservice>,
+    pub stores_microservice: Arc<StoresMicroservice>,
+    pub notifications_microservice: Arc<NotificationsMicroservice>,
+    pub users_microservice: Arc<UsersMicroservice>,
+    pub billing_microservice: Arc<BillingMicroservice>,
+    pub warehouses_microservice: Arc<WarehousesMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
-    pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
     pub fn new(
         config: config::Config,
-        user_id: Option<UserId>,
-        orders_microservice: Box<OrdersMicroservice>,
-        stores_microservice: Box<StoresMicroservice>,
-        notifications_microservice: Box<NotificationsMicroservice>,
-        users_microservice: Box<UsersMicroservice>,
-        billing_microservice: Box<BillingMicroservice>,
-        warehouses_microservice: Box<WarehousesMicroservice>,
+        orders_microservice: Arc<OrdersMicroservice>,
+        stores_microservice: Arc<StoresMicroservice>,
+        notifications_microservice: Arc<NotificationsMicroservice>,
+        users_microservice: Arc<UsersMicroservice>,
+        billing_microservice: Arc<BillingMicroservice>,
+        warehouses_microservice: Arc<WarehousesMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
             config,
             log,
-            user_id,
             orders_microservice,
             stores_microservice,
             notifications_microservice,
@@ -113,8 +111,7 @@ impl OrderServiceImpl {
         let (coupon_id, customer) = payload;
 
         self.stores_microservice
-            .with_superadmin()
-            .use_coupon(coupon_id, customer)
+            .use_coupon(Initiator::Superadmin, coupon_id, customer)
             .map_err(|e| {
                 e.context("Commit coupon for user in stores microservice failed.")
                     .context(Error::HttpClient)
@@ -186,8 +183,7 @@ impl OrderServiceImpl {
             .push(CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id));
 
         self.billing_microservice
-            .with_superadmin()
-            .create_invoice(input.clone())
+            .create_invoice(Initiator::Superadmin, input.clone())
             .map_err(|e| {
                 e.context("Creating invoice in billing microservice failed.")
                     .context(Error::HttpClient)
@@ -205,8 +201,8 @@ impl OrderServiceImpl {
 
     fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
-        let notifications_microservice = self.notifications_microservice.cloned();
-        self.users_microservice.with_user(user_id).get(user_id).and_then({
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.users_microservice.get(Some(user_id.into()), user_id).and_then({
             move |user| {
                 if let Some(user) = user {
                     let user = EmailUser {
@@ -219,7 +215,7 @@ impl OrderServiceImpl {
                         order_slug: order_slug.to_string(),
                         cluster_url,
                     };
-                    Either::A(notifications_microservice.with_superadmin().order_create_for_user(email))
+                    Either::A(notifications_microservice.order_create_for_user(Initiator::Superadmin, email))
                 } else {
                     error!(
                         "Sending notification to user can not be done. User with id: {} is not found.",
@@ -237,7 +233,7 @@ impl OrderServiceImpl {
 
     fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
-        let notifications_microservice = self.notifications_microservice.cloned();
+        let notifications_microservice = self.notifications_microservice.clone();
         self.stores_microservice.get(store_id).and_then({
             move |store| {
                 if let Some(store) = store {
@@ -248,7 +244,7 @@ impl OrderServiceImpl {
                             order_slug: order_slug.to_string(),
                             cluster_url,
                         };
-                        Either::A(notifications_microservice.with_superadmin().order_create_for_store(email))
+                        Either::A(notifications_microservice.order_create_for_store(Initiator::Superadmin, email))
                     } else {
                         Either::B(future::ok(()))
                     })
@@ -274,8 +270,8 @@ impl OrderServiceImpl {
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
-        let notifications_microservice = self.notifications_microservice.cloned();
-        self.users_microservice.with_user(user_id).get(user_id).and_then({
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.users_microservice.get(Some(user_id.into()), user_id).and_then({
             move |user| {
                 if let Some(user) = user {
                     let user = EmailUser {
@@ -289,7 +285,7 @@ impl OrderServiceImpl {
                         order_state: order_state.to_string(),
                         cluster_url,
                     };
-                    Either::A(notifications_microservice.with_superadmin().order_update_state_for_user(email))
+                    Either::A(notifications_microservice.order_update_state_for_user(Initiator::Superadmin, email))
                 } else {
                     error!(
                         "Sending notification to user can not be done. User with id: {} is not found.",
@@ -312,7 +308,7 @@ impl OrderServiceImpl {
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
-        let notifications_microservice = self.notifications_microservice.cloned();
+        let notifications_microservice = self.notifications_microservice.clone();
         self.stores_microservice.get(store_id).and_then({
             move |store| {
                 if let Some(store) = store {
@@ -324,7 +320,7 @@ impl OrderServiceImpl {
                             order_state: order_state.to_string(),
                             cluster_url,
                         };
-                        Either::A(notifications_microservice.with_superadmin().order_update_state_for_store(email))
+                        Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
                     } else {
                         Either::B(future::ok(()))
                     })
@@ -473,14 +469,13 @@ impl OrderServiceImpl {
                 _ => {}
             }
 
-            let orders_microservice = self.orders_microservice.cloned();
+            let orders_microservice = self.orders_microservice.clone();
 
             let order_id = order_info.order_id;
 
             let res = self
                 .orders_microservice
-                .with_user(order_info.customer_id)
-                .get_order(OrderIdentifier::Id(order_info.order_id))
+                .get_order(Some(order_info.customer_id.into()), OrderIdentifier::Id(order_info.order_id))
                 .map_err(|e| {
                     e.context("Setting new status in orders microservice error occured.")
                         .context(Error::HttpClient)
@@ -500,8 +495,7 @@ impl OrderServiceImpl {
                         let payload: UpdateStatePayload = order_info.clone().into();
                         Either::B(
                             orders_microservice
-                                .with_superadmin()
-                                .set_order_state(OrderIdentifier::Id(order.id), payload)
+                                .set_order_state(Some(Initiator::Superadmin), OrderIdentifier::Id(order.id), payload)
                                 .map_err(|e| {
                                     e.context("Setting new status in orders microservice error occured.")
                                         .context(Error::HttpClient)
@@ -526,9 +520,9 @@ impl OrderServiceImpl {
         track_id: Option<String>,
         comment: Option<String>,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
-        let orders_microservice = self.orders_microservice.cloned();
+        let orders_microservice = self.orders_microservice.clone();
         self.orders_microservice
-            .get_order(OrderIdentifier::Slug(order_slug))
+            .get_order(None, OrderIdentifier::Slug(order_slug))
             .map_err(move |e| {
                 parse_validation_errors(e.into(), &["order"])
                     .context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
@@ -547,6 +541,7 @@ impl OrderServiceImpl {
                         Either::B(
                             orders_microservice
                                 .set_order_state(
+                                    None,
                                     OrderIdentifier::Slug(order_slug),
                                     UpdateStatePayload {
                                         state: order_state,
@@ -580,15 +575,13 @@ impl OrderServiceImpl {
 
         let mut orders_futures = vec![];
         for order in orders {
-            let warehouses_microservice = self.warehouses_microservice.cloned();
+            let warehouses_microservice = self.warehouses_microservice.clone();
             if let Some(order) = order {
                 if order.state == OrderState::Paid {
                     debug!("Updating warehouses stock with product id {}", order.product);
                     let order_quantity = order.quantity;
-                    let res = self
-                        .warehouses_microservice
-                        .with_superadmin()
-                        .find_by_product_id(order.product)
+                    let res = warehouses_microservice
+                        .find_by_product_id(Initiator::Superadmin, order.product)
                         .and_then(move |stocks| {
                             debug!("Updating warehouses stocks: {:?}", stocks);
                             for stock in stocks {
@@ -603,9 +596,12 @@ impl OrderServiceImpl {
                                 );
                                 return Either::A(
                                     warehouses_microservice
-                                        .with_superadmin()
-                                        .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
-                                        .map(|_| ()),
+                                        .set_product_in_warehouse(
+                                            Initiator::Superadmin,
+                                            stock.warehouse_id,
+                                            stock.product_id,
+                                            Quantity(new_quantity),
+                                        ).map(|_| ()),
                                 );
                             }
                             Either::B(future::ok(()))
@@ -632,14 +628,13 @@ impl OrderServiceImpl {
     // Contains reversal of Order creation
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let orders_microservice = self.orders_microservice.cloned();
-        let billing_microservice = self.billing_microservice.cloned();
+        let orders_microservice = self.orders_microservice.clone();
+        let billing_microservice = self.billing_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| match e {
             CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
                 debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
                 let result = orders_microservice
-                    .with_superadmin()
-                    .revert_convert_cart(ConvertCartRevert { conversion_id })
+                    .revert_convert_cart(Initiator::Superadmin, ConvertCartRevert { conversion_id })
                     .then(|_| Ok(()));
 
                 Box::new(result) as Box<Future<Item = (), Error = ()>>
@@ -648,8 +643,7 @@ impl OrderServiceImpl {
             CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
                 debug!("Reverting create invoice, saga_id: {}", saga_id);
                 let result = billing_microservice
-                    .with_superadmin()
-                    .revert_create_invoice(saga_id)
+                    .revert_create_invoice(Initiator::Superadmin, saga_id)
                     .then(|_| Ok(()));
 
                 Box::new(result) as Box<Future<Item = (), Error = ()>>

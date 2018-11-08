@@ -1,10 +1,12 @@
 use failure::Error;
 use futures::{Future, IntoFuture};
-use hyper::header::Headers;
+use hyper::header::{Authorization, Headers};
 use hyper::Method;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
 use serde_json;
+
+use stq_types::*;
 
 use http::HttpClient;
 
@@ -28,6 +30,12 @@ pub use self::warehouses::*;
 
 pub type ApiFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
 
+#[derive(Clone, Copy, Debug)]
+pub enum Initiator {
+    Superadmin,
+    User(UserId),
+}
+
 fn request<C: HttpClient + 'static, T: Serialize, S: for<'a> Deserialize<'a> + 'static + Send>(
     http_client: C,
     method: Method,
@@ -47,4 +55,21 @@ fn request<C: HttpClient + 'static, T: Serialize, S: for<'a> Deserialize<'a> + '
         .and_then(move |serialized_body| http_client.request(method, url, serialized_body, headers))
         .and_then(|response| response.parse::<S>().into_future());
     Box::new(result)
+}
+
+impl From<UserId> for Initiator {
+    fn from(id: UserId) -> Initiator {
+        Initiator::User(id)
+    }
+}
+
+impl Into<Headers> for Initiator {
+    fn into(self) -> Headers {
+        let mut headers = Headers::new();
+        match self {
+            Initiator::Superadmin => headers.set(Authorization("1".to_string())),
+            Initiator::User(id) => headers.set(Authorization(id.to_string())),
+        }
+        headers
+    }
 }

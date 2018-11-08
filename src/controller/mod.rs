@@ -61,35 +61,35 @@ impl Controller for ControllerImpl {
 
         let http_client = self.http_client.clone();
 
-        let orders_microservice = OrdersMicroserviceImpl::new(
+        let orders_microservice = Arc::new(OrdersMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
-        let stores_microservice = StoresMicroserviceImpl::new(
+        let stores_microservice = Arc::new(StoresMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), stores_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
-        let notifications_microservice = NotificationsMicroserviceImpl::new(
+        let notifications_microservice = Arc::new(NotificationsMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
-        let users_microservice = UsersMicroserviceImpl::new(
+        let users_microservice = Arc::new(UsersMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
-        let billing_microservice = BillingMicroserviceImpl::new(
+        let billing_microservice = Arc::new(BillingMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
-        let warehouses_microservice = WarehousesMicroserviceImpl::new(
+        let warehouses_microservice = Arc::new(WarehousesMicroserviceImpl::new(
             http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
             self.config.clone(),
-        );
+        ));
 
         let config = self.config.clone();
 
@@ -97,13 +97,12 @@ impl Controller for ControllerImpl {
         let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
         let order_service = OrderServiceImpl::new(
             config,
-            user_id,
-            Box::new(orders_microservice),
-            Box::new(stores_microservice),
-            Box::new(notifications_microservice),
-            Box::new(users_microservice),
-            Box::new(billing_microservice),
-            Box::new(warehouses_microservice),
+            orders_microservice,
+            stores_microservice,
+            notifications_microservice,
+            users_microservice,
+            billing_microservice,
+            warehouses_microservice,
         );
         let path = req.path().to_string();
 

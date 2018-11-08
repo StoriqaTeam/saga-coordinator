@@ -4,16 +4,20 @@ use stq_api::warehouses::{Stock, StockSetPayload};
 use stq_routes::service::Service as StqService;
 use stq_types::*;
 
-use super::ApiFuture;
+use super::{ApiFuture, Initiator};
 
 use config;
 use http::HttpClient;
 
 pub trait WarehousesMicroservice {
-    fn cloned(&self) -> Box<WarehousesMicroservice>;
-    fn with_superadmin(&self) -> Box<WarehousesMicroservice>;
-    fn find_by_product_id(&self, product_id: ProductId) -> ApiFuture<Vec<Stock>>;
-    fn set_product_in_warehouse(&self, warehouse_id: WarehouseId, product_id: ProductId, quantity: Quantity) -> ApiFuture<Stock>;
+    fn find_by_product_id(&self, initiator: Initiator, product_id: ProductId) -> ApiFuture<Vec<Stock>>;
+    fn set_product_in_warehouse(
+        &self,
+        initiator: Initiator,
+        warehouse_id: WarehouseId,
+        product_id: ProductId,
+        quantity: Quantity,
+    ) -> ApiFuture<Stock>;
 }
 
 pub struct WarehousesMicroserviceImpl {
@@ -22,21 +26,13 @@ pub struct WarehousesMicroserviceImpl {
 }
 
 impl WarehousesMicroservice for WarehousesMicroserviceImpl {
-    fn cloned(&self) -> Box<WarehousesMicroservice> {
-        Box::new(WarehousesMicroserviceImpl {
-            http_client: self.http_client.cloned(),
-            config: self.config.clone(),
-        })
-    }
-
-    fn with_superadmin(&self) -> Box<WarehousesMicroservice> {
-        Box::new(WarehousesMicroserviceImpl {
-            http_client: self.http_client.superadmin(),
-            config: self.config.clone(),
-        })
-    }
-
-    fn set_product_in_warehouse(&self, warehouse_id: WarehouseId, product_id: ProductId, quantity: Quantity) -> ApiFuture<Stock> {
+    fn set_product_in_warehouse(
+        &self,
+        initiator: Initiator,
+        warehouse_id: WarehouseId,
+        product_id: ProductId,
+        quantity: Quantity,
+    ) -> ApiFuture<Stock> {
         let url = format!(
             "{}/warehouses/{}/products/{}",
             self.warehouses_url(),
@@ -49,14 +45,13 @@ impl WarehousesMicroservice for WarehousesMicroserviceImpl {
             Method::Put,
             url,
             Some(StockSetPayload { quantity }),
-            None,
+            Some(initiator.into()),
         )
     }
 
-    fn find_by_product_id(&self, product_id: ProductId) -> ApiFuture<Vec<Stock>> {
+    fn find_by_product_id(&self, initiator: Initiator, product_id: ProductId) -> ApiFuture<Vec<Stock>> {
         let url = format!("{}/stocks/by-product-id/{}", self.warehouses_url(), product_id);
-
-        super::request::<_, (), Vec<Stock>>(self.http_client.cloned(), Method::Get, url, None, None)
+        super::request::<_, (), Vec<Stock>>(self.http_client.cloned(), Method::Get, url, None, Some(initiator.into()))
     }
 }
 
