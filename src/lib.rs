@@ -13,6 +13,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
+extern crate tokio_signal;
 extern crate uuid;
 extern crate validator;
 #[macro_use]
@@ -42,7 +43,6 @@ use std::sync::Arc;
 
 use stq_http::controller::Application;
 
-use futures::future;
 use futures::prelude::*;
 use hyper::server::Http;
 use tokio_core::reactor::Core;
@@ -96,5 +96,8 @@ pub fn start_server(config: config::Config) {
     );
 
     info!("Listening on http://{}", address);
-    core.run(future::empty::<(), ()>()).unwrap();
+    core.run(tokio_signal::ctrl_c().flatten_stream().take(1u64).for_each(|()| {
+        info!("Ctrl+C received. Exit");
+        Ok(())
+    })).unwrap();
 }
