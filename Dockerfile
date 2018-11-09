@@ -1,5 +1,7 @@
 FROM debian:stable-slim
 
+ARG env=debug
+
 # Install deps, add user and cleanup
 RUN apt-get update \
   && apt-get install -y wget gnupg2 \
@@ -14,7 +16,7 @@ RUN apt-get update \
   && mkdir -p /app/config \
   && adduser --disabled-password --gecos "" --home /app --no-create-home -u 5000 app
 
-COPY target/release/saga_coordinator_runner /app
+COPY target/$env/saga_coordinator_runner /app
 COPY config /app/config
 RUN chown -R app: /app
 
