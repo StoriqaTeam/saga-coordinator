@@ -24,6 +24,7 @@ use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
 use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
 use stq_http::request_util::Currency as CurrencyHeader;
+use stq_http::request_util::RequestTimeout as RequestTimeoutHeader;
 use stq_router::RouteParser;
 
 use self::routes::Route;
@@ -293,6 +294,9 @@ fn default_headers(request_headers: &Headers) -> Headers {
     }
     if let Some(correlation) = request_headers.get::<CorrelationTokenHeader>() {
         orders_headers.set(correlation.clone());
+    }
+    if let Some(timeout) = request_headers.get::<RequestTimeoutHeader>() {
+        orders_headers.set(timeout.clone());
     }
     orders_headers
 }
