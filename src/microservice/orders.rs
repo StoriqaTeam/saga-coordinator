@@ -103,7 +103,7 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
         payload: UpdateStatePayload,
     ) -> ApiFuture<Option<Order>> {
         let url = format!(
-            "{}/{}/status/{}",
+            "{}/{}/{}/status",
             self.orders_url(),
             StqModel::Order.to_url(),
             order_identifier_route(&order_id),
