@@ -8,19 +8,13 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
-use hyper::Method;
 
-use serde_json;
-
-use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::request_util::Currency as CurrencyHeader;
-use stq_routes::model::Model as StqModel;
-use stq_routes::service::Service as StqService;
-use stq_types::{BillingRole, DeliveryRole, MerchantId, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+use stq_types::{BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
 
 use super::parse_validation_errors;
 use config;
 use errors::Error;
+use microservice::*;
 use models::*;
 use services::types::ServiceFuture;
 
@@ -30,20 +24,33 @@ pub trait StoreService {
 
 /// Attributes services, responsible for Attribute-related CRUD operations
 pub struct StoreServiceImpl {
-    pub http_client: HttpClientHandle,
+    pub orders_microservice: Arc<OrdersMicroservice>,
+    pub stores_microservice: Arc<StoresMicroservice>,
+    pub billing_microservice: Arc<BillingMicroservice>,
+    pub warehouses_microservice: Arc<WarehousesMicroservice>,
+    pub delivery_microservice: Arc<DeliveryMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateStoreOperationLog>>,
-    pub user_id: Option<UserId>,
 }
 
 impl StoreServiceImpl {
-    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
+    pub fn new(
+        config: config::Config,
+        orders_microservice: Arc<OrdersMicroservice>,
+        stores_microservice: Arc<StoresMicroservice>,
+        billing_microservice: Arc<BillingMicroservice>,
+        warehouses_microservice: Arc<WarehousesMicroservice>,
+        delivery_microservice: Arc<DeliveryMicroservice>,
+    ) -> Self {
         let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
         Self {
-            http_client,
             config,
             log,
-            user_id,
+            orders_microservice,
+            stores_microservice,
+            billing_microservice,
+            warehouses_microservice,
+            delivery_microservice,
         }
     }
 
@@ -55,31 +62,10 @@ impl StoreServiceImpl {
         let user_id = input.user_id;
         log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
 
-        let mut headers = Headers::new();
-        if let Some(ref user_id) = self.user_id {
-            headers.set(Authorization(user_id.to_string()));
-        };
-        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-
-        let client = self.http_client.clone();
-        let stores_url = self.config.service_url(StqService::Stores);
-
-        let res = serde_json::to_string(input)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<Store>(
-                        Method::Post,
-                        format!("{}/{}", stores_url, StqModel::Store.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating store in stores microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |store| {
+        let res = self
+            .stores_microservice
+            .create_store(None, input.clone())
+            .and_then(move |store| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
                 Ok(store)
             }).then(|res| match res {
@@ -106,28 +92,10 @@ impl StoreServiceImpl {
             .unwrap()
             .push(CreateStoreOperationStage::WarehousesRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
-
-        let client = self.http_client.clone();
-        let warehouses_url = self.config.service_url(StqService::Warehouses);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<RoleEntry<NewWarehouseRole>>(
-                        Method::Post,
-                        format!("{}/{}", warehouses_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in warehouses microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |res| {
+        let res = self
+            .warehouses_microservice
+            .create_warehouse_role(Some(Initiator::Superadmin), role)
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
@@ -154,28 +122,10 @@ impl StoreServiceImpl {
 
         log.lock().unwrap().push(CreateStoreOperationStage::OrdersRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to orders
-
-        let client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<RoleEntry<NewOrdersRole>>(
-                        Method::Post,
-                        format!("{}/{}", orders_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in orders microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |res| {
+        let res = self
+            .orders_microservice
+            .create_role(Some(Initiator::Superadmin), role.clone())
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
@@ -200,28 +150,10 @@ impl StoreServiceImpl {
             .unwrap()
             .push(CreateStoreOperationStage::BillingRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to billing
-
-        let client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<BillingRole>>(
-                        Method::Post,
-                        format!("{}/{}", billing_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |res| {
+        let res = self
+            .billing_microservice
+            .create_role(Some(Initiator::Superadmin), role)
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
@@ -246,27 +178,13 @@ impl StoreServiceImpl {
             .unwrap()
             .push(CreateStoreOperationStage::DeliveryRoleSetStart(new_role_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can add role to delivery
-
-        let client = self.http_client.clone();
-        let delivery_url = self.config.service_url(StqService::Delivery);
-
-        let res = serde_json::to_string(&role)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<NewRole<DeliveryRole>>(
-                        Method::Post,
-                        format!("{}/{}", delivery_url, StqModel::Role.to_url()),
-                        Some(body),
-                        Some(headers),
-                    ).map_err(|e| {
-                        e.context("Creating role in delivery microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
+        let res = self
+            .delivery_microservice
+            .create_delivery_role(Some(Initiator::Superadmin), role)
+            .map_err(|e| {
+                e.context("Creating role in delivery microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -290,23 +208,10 @@ impl StoreServiceImpl {
             .unwrap()
             .push(CreateStoreOperationStage::BillingCreateMerchantStart(store_id));
 
-        let client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-
-        let res = serde_json::to_string(&payload)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                let mut headers = Headers::new();
-                headers.set(Authorization("1".to_string())); // only super admin can add role to warehouses
-                client
-                    .request::<Merchant>(Method::Post, format!("{}/merchants/store", billing_url), Some(body), Some(headers))
-                    .map_err(|e| {
-                        e.context("Creating merchant in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |res| {
+        let res = self
+            .billing_microservice
+            .create_store_merchant(Some(Initiator::Superadmin), payload)
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
@@ -346,28 +251,20 @@ impl StoreServiceImpl {
     // Contains reversal of Store creation
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let http_client = self.http_client.clone();
-        let billing_url = self.config.service_url(StqService::Billing);
-        let stores_url = self.config.service_url(StqService::Stores);
-        let delivery_url = self.config.service_url(StqService::Delivery);
-        let warehouse_url = self.config.service_url(StqService::Warehouses);
-        let orders_url = self.config.service_url(StqService::Orders);
 
+        let orders_microservice = self.orders_microservice.clone();
+        let stores_microservice = self.stores_microservice.clone();
+        let billing_microservice = self.billing_microservice.clone();
+        let warehouses_microservice = self.warehouses_microservice.clone();
+        let delivery_microservice = self.delivery_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
                 CreateStoreOperationStage::StoreCreationComplete(store_id) => {
                     debug!("Reverting store, store_id: {}", store_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // reverting store with superuser credentials
-                    headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
                     Box::new(
-                        http_client
-                            .request::<Store>(
-                                Method::Delete,
-                                format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id,),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        stores_microservice
+                            .delete_store(Some(Initiator::Superadmin), store_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
@@ -377,77 +274,47 @@ impl StoreServiceImpl {
                     headers.set(Authorization("1".to_string())); // only super admin delete user role
 
                     Box::new(
-                        http_client
-                            .request::<RoleEntry<NewWarehouseRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", warehouse_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        warehouses_microservice
+                            .delete_warehouse_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::OrdersRoleSetComplete(role_id) => {
                     debug!("Reverting orders role, user_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
-
                     Box::new(
-                        http_client
-                            .request::<RoleEntry<NewOrdersRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", orders_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        orders_microservice
+                            .delete_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::BillingRoleSetComplete(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
 
                     Box::new(
-                        http_client
-                            .request::<NewRole<BillingRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", billing_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        billing_microservice
+                            .delete_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::DeliveryRoleSetComplete(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete user role
-
                     Box::new(
-                        http_client
-                            .request::<NewRole<DeliveryRole>>(
-                                Method::Delete,
-                                format!("{}/roles/by-id/{}", delivery_url, role_id),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        delivery_microservice
+                            .delete_delivery_role(Some(Initiator::Superadmin), role_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
                 CreateStoreOperationStage::BillingCreateMerchantComplete(store_id) => {
                     debug!("Reverting merchant, store_id: {}", store_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin delete merchant
 
                     Box::new(
-                        http_client
-                            .request::<MerchantId>(
-                                Method::Delete,
-                                format!("{}/merchants/store/{}", billing_url, store_id.0,),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
+                        billing_microservice
+                            .delete_store_merchant(Some(Initiator::Superadmin), store_id)
+                            .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 

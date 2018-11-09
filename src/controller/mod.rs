@@ -4,7 +4,6 @@
 //! of `Service` layer to http responses
 pub mod routes;
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use failure::Error as FailureError;
@@ -12,6 +11,7 @@ use failure::Fail;
 use futures::future;
 use futures::prelude::*;
 use hyper::header::Authorization;
+use hyper::header::Headers;
 use hyper::server::Request;
 use hyper::Method;
 
@@ -22,12 +22,19 @@ use stq_http::controller::ControllerFuture;
 use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
+use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
+use stq_http::request_util::Currency as CurrencyHeader;
+use stq_http::request_util::RequestTimeout as RequestTimeoutHeader;
 use stq_router::RouteParser;
-use stq_types::UserId;
 
 use self::routes::Route;
 use config::Config;
 use errors::Error;
+use http::HttpClientWithDefaultHeaders;
+use microservice::{
+    BillingMicroserviceImpl, DeliveryMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl,
+    UsersMicroserviceImpl, WarehousesMicroserviceImpl,
+};
 use models::{
     BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
 };
@@ -45,17 +52,73 @@ pub struct ControllerImpl {
 impl Controller for ControllerImpl {
     fn call(&self, req: Request) -> ControllerFuture {
         let headers = req.headers().clone();
-        let auth_header = headers.get::<Authorization<String>>();
-        let user_id = auth_header
-            .map(|auth| auth.0.clone())
-            .and_then(|id| i32::from_str(&id).ok())
-            .map(UserId);
 
         let http_client = self.http_client.clone();
+
+        let orders_microservice = Arc::new(OrdersMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let stores_microservice = Arc::new(StoresMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), stores_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let notifications_microservice = Arc::new(NotificationsMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let users_microservice = Arc::new(UsersMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let billing_microservice = Arc::new(BillingMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let warehouses_microservice = Arc::new(WarehousesMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
+        let delivery_microservice = Arc::new(DeliveryMicroserviceImpl::new(
+            http_client_with_default_headers(http_client.clone(), default_headers(&headers)),
+            self.config.clone(),
+        ));
+
         let config = self.config.clone();
-        let account_service = AccountServiceImpl::new(http_client.clone(), config.clone());
-        let store_service = StoreServiceImpl::new(http_client.clone(), config.clone(), user_id);
-        let order_service = OrderServiceImpl::new(http_client, config, user_id);
+
+        let account_service = AccountServiceImpl::new(
+            http_client.clone(),
+            config.clone(),
+            stores_microservice.clone(),
+            billing_microservice.clone(),
+            delivery_microservice.clone(),
+            users_microservice.clone(),
+            notifications_microservice.clone(),
+        );
+        let store_service = StoreServiceImpl::new(
+            config.clone(),
+            orders_microservice.clone(),
+            stores_microservice.clone(),
+            billing_microservice.clone(),
+            warehouses_microservice.clone(),
+            delivery_microservice.clone(),
+        );
+
+        let order_service = OrderServiceImpl::new(
+            config,
+            orders_microservice.clone(),
+            stores_microservice.clone(),
+            notifications_microservice.clone(),
+            users_microservice.clone(),
+            billing_microservice.clone(),
+            warehouses_microservice.clone(),
+        );
         let path = req.path().to_string();
 
         let fut = match (&req.method().clone(), self.route_parser.test(req.path())) {
@@ -222,4 +285,28 @@ impl Controller for ControllerImpl {
 
         Box::new(fut)
     }
+}
+
+fn default_headers(request_headers: &Headers) -> Headers {
+    let mut orders_headers = Headers::new();
+    if let Some(auth) = request_headers.get::<Authorization<String>>() {
+        orders_headers.set(auth.clone());
+    }
+    if let Some(correlation) = request_headers.get::<CorrelationTokenHeader>() {
+        orders_headers.set(correlation.clone());
+    }
+    if let Some(timeout) = request_headers.get::<RequestTimeoutHeader>() {
+        orders_headers.set(timeout.clone());
+    }
+    orders_headers
+}
+
+fn stores_headers(request_headers: &Headers) -> Headers {
+    let mut stores_headers = default_headers(request_headers);
+    stores_headers.set(CurrencyHeader("STQ".to_string()));
+    stores_headers
+}
+
+fn http_client_with_default_headers(client_handle: HttpClientHandle, headers: Headers) -> HttpClientWithDefaultHeaders<HttpClientHandle> {
+    HttpClientWithDefaultHeaders::new(client_handle, headers)
 }

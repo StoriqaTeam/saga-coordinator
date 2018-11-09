@@ -6,18 +6,8 @@ use failure::Fail;
 use futures::future::{self, join_all, Either};
 use futures::prelude::*;
 use futures::stream::iter_ok;
-use hyper::header::Authorization;
-use hyper::Headers;
-use hyper::Method;
-use serde_json;
 
-use stq_api::orders::{BuyNow, Order, OrderClient};
-use stq_api::rpc_client::RestApiClient;
-use stq_api::warehouses::WarehouseClient;
-use stq_http::client::ClientHandle as HttpClientHandle;
-use stq_http::request_util::Currency as CurrencyHeader;
-use stq_routes::model::Model as StqModel;
-use stq_routes::service::Service as StqService;
+use stq_api::orders::{BuyNow, Order};
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
@@ -26,6 +16,10 @@ use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, Sa
 use super::parse_validation_errors;
 use config;
 use errors::Error;
+use microservice::{
+    BillingMicroservice, Initiator, NotificationsMicroservice, OrdersMicroservice, StoresMicroservice, UsersMicroservice,
+    WarehousesMicroservice,
+};
 use models::*;
 use services::types::ServiceFuture;
 
@@ -44,20 +38,36 @@ pub trait OrderService {
 
 /// Orders services, responsible for Creating orders
 pub struct OrderServiceImpl {
-    pub http_client: HttpClientHandle,
+    pub orders_microservice: Arc<OrdersMicroservice>,
+    pub stores_microservice: Arc<StoresMicroservice>,
+    pub notifications_microservice: Arc<NotificationsMicroservice>,
+    pub users_microservice: Arc<UsersMicroservice>,
+    pub billing_microservice: Arc<BillingMicroservice>,
+    pub warehouses_microservice: Arc<WarehousesMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateOrderOperationLog>>,
-    pub user_id: Option<UserId>,
 }
 
 impl OrderServiceImpl {
-    pub fn new(http_client: HttpClientHandle, config: config::Config, user_id: Option<UserId>) -> Self {
+    pub fn new(
+        config: config::Config,
+        orders_microservice: Arc<OrdersMicroservice>,
+        stores_microservice: Arc<StoresMicroservice>,
+        notifications_microservice: Arc<NotificationsMicroservice>,
+        users_microservice: Arc<UsersMicroservice>,
+        billing_microservice: Arc<BillingMicroservice>,
+        warehouses_microservice: Arc<WarehousesMicroservice>,
+    ) -> Self {
         let log = Arc::new(Mutex::new(CreateOrderOperationLog::new()));
         Self {
-            http_client,
             config,
             log,
-            user_id,
+            orders_microservice,
+            stores_microservice,
+            notifications_microservice,
+            users_microservice,
+            billing_microservice,
+            warehouses_microservice,
         }
     }
 
@@ -71,23 +81,17 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
 
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-        rpc_client
-            .convert_cart(
-                Some(convert_cart.conversion_id),
-                convert_cart.convert_cart.customer_id,
-                convert_cart.convert_cart.prices,
-                convert_cart.convert_cart.address,
-                convert_cart.convert_cart.receiver_name,
-                convert_cart.convert_cart.receiver_phone,
-                convert_cart.convert_cart.receiver_email,
-                convert_cart.convert_cart.coupons,
-                convert_cart.convert_cart.delivery_info,
-            ).map_err(|e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context("Converting cart in orders microservice failed.")
-                    .into()
+        self.orders_microservice
+            .convert_cart(ConvertCartPayload {
+                conversion_id: Some(convert_cart.conversion_id),
+                user_id: convert_cart.convert_cart.customer_id,
+                seller_prices: convert_cart.convert_cart.prices,
+                address: convert_cart.convert_cart.address,
+                receiver_name: convert_cart.convert_cart.receiver_name,
+                receiver_phone: convert_cart.convert_cart.receiver_phone,
+                receiver_email: convert_cart.convert_cart.receiver_email,
+                coupons: convert_cart.convert_cart.coupons,
+                delivery_info: convert_cart.convert_cart.delivery_info,
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
@@ -100,25 +104,11 @@ impl OrderServiceImpl {
     }
 
     fn commit_coupon(self, payload: (CouponId, UserId)) -> impl Future<Item = (Self, UsedCoupon), Error = (Self, FailureError)> {
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can create invoice
-        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-
-        let stores_url = self.config.service_url(StqService::Stores);
-        let client = self.http_client.clone();
         let (coupon_id, customer) = payload;
 
-        client
-            .request::<UsedCoupon>(
-                Method::Post,
-                format!("{}/coupons/{}/users/{}", stores_url, coupon_id, customer),
-                None,
-                Some(headers),
-            ).map_err(|e| {
-                e.context("Commit coupon for user in stores microservice failed.")
-                    .context(Error::HttpClient)
-                    .into()
-            }).then(|res| match res {
+        self.stores_microservice
+            .use_coupon(Initiator::Superadmin, coupon_id, customer)
+            .then(|res| match res {
                 Ok(used_coupon) => Ok((self, used_coupon)),
                 Err(e) => Err((self, e)),
             })
@@ -157,15 +147,9 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::OrdersConvertCartStart(conversion_id));
 
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-        rpc_client
+        self.orders_microservice
             .create_buy_now(input, Some(conversion_id))
-            .map_err(|e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context("Create order from buy now data in orders microservice failed.")
-                    .into()
-            }).and_then(move |res| {
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
@@ -186,24 +170,9 @@ impl OrderServiceImpl {
             .unwrap()
             .push(CreateOrderOperationStage::BillingCreateInvoiceStart(saga_id));
 
-        let mut headers = Headers::new();
-        headers.set(Authorization("1".to_string())); // only super admin can create invoice
-
-        let billing_url = self.config.service_url(StqService::Billing);
-        let client = self.http_client.clone();
-
-        serde_json::to_string(&input)
-            .into_future()
-            .map_err(From::from)
-            .and_then(move |body| {
-                client
-                    .request::<Invoice>(Method::Post, format!("{}/invoices", billing_url), Some(body), Some(headers))
-                    .map_err(|e| {
-                        e.context("Creating invoice in billing microservice failed.")
-                            .context(Error::HttpClient)
-                            .into()
-                    })
-            }).and_then(move |res| {
+        self.billing_microservice
+            .create_invoice(Initiator::Superadmin, input.clone())
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
@@ -215,109 +184,62 @@ impl OrderServiceImpl {
     }
 
     fn notify_user_create_order(&self, user_id: UserId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
-        let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
-        let mut headers = Headers::new();
-        headers.set(Authorization(user_id.to_string()));
-        client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                let client = client.clone();
-                move |user| {
-                    if let Some(user) = user {
-                        let user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = OrderCreateForUser {
-                            user,
-                            order_slug: order_slug.to_string(),
-                            cluster_url,
-                        };
-                        let url = format!("{}/users/order-create", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
-                    } else {
-                        error!(
-                            "Sending notification to user can not be done. User with id: {} is not found.",
-                            user_id
-                        );
-                        Either::B(future::err(
-                            format_err!("User is not found in users microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
-                }
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.users_microservice
+            .get(Some(user_id.into()), user_id)
+            .and_then(move |user| {
+                user.ok_or_else(|| {
+                    error!(
+                        "Sending notification to user can not be done. User with id: {} is not found.",
+                        user_id
+                    );
+                    format_err!("User is not found in users microservice.")
+                        .context(Error::NotFound)
+                        .into()
+                }).into_future()
+            }).and_then(move |user| {
+                let user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = OrderCreateForUser {
+                    user,
+                    order_slug: order_slug.to_string(),
+                    cluster_url,
+                };
+                notifications_microservice.order_create_for_user(Initiator::Superadmin, email)
             })
     }
 
     fn notify_store_create_order(&self, store_id: StoreId, order_slug: OrderSlug) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
-        let stores_url = self.config.service_url(StqService::Stores);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
-        let mut headers = Headers::new();
-        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-        client
-            .request::<Option<Store>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                let client = client.clone();
-                let notifications_url = notifications_url.clone();
-                let cluster_url = cluster_url.clone();
-                move |store| {
-                    if let Some(store) = store {
-                        Either::A(if let Some(store_email) = store.email {
-                            let email = OrderCreateForStore {
-                                store_email,
-                                store_id: store_id.to_string(),
-                                order_slug: order_slug.to_string(),
-                                cluster_url,
-                            };
-                            let url = format!("{}/stores/order-create", notifications_url);
-                            Either::A(
-                                serde_json::to_string(&email)
-                                    .map_err(From::from)
-                                    .into_future()
-                                    .and_then(move |body| {
-                                        let mut headers = Headers::new();
-                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                        client
-                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                            .map_err(From::from)
-                                    }),
-                            )
-                        } else {
-                            Either::B(future::ok(()))
-                        })
-                    } else {
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.stores_microservice
+            .get(store_id)
+            .and_then(move |store| {
+                store
+                    .ok_or_else(|| {
                         error!(
                             "Sending notification to store can not be done. Store with id: {} is not found.",
                             store_id
                         );
-                        Either::B(future::err(
-                            format_err!("Store is not found in stores microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
+                        format_err!("Store is not found in stores microservice.")
+                            .context(Error::NotFound)
+                            .into()
+                    }).into_future()
+            }).and_then(move |store| {
+                if let Some(store_email) = store.email {
+                    let email = OrderCreateForStore {
+                        store_email,
+                        store_id: store_id.to_string(),
+                        order_slug: order_slug.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.order_create_for_store(Initiator::Superadmin, email))
+                } else {
+                    Either::B(future::ok(()))
                 }
             })
     }
@@ -328,56 +250,33 @@ impl OrderServiceImpl {
         order_slug: OrderSlug,
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
-        let users_url = self.config.service_url(StqService::Users);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", users_url, StqModel::User.to_url(), user_id);
-        let mut headers = Headers::new();
-        headers.set(Authorization(user_id.to_string()));
-        client
-            .request::<Option<User>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                let client = client.clone();
-                move |user| {
-                    if let Some(user) = user {
-                        let user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = OrderUpdateStateForUser {
-                            user,
-                            order_slug: order_slug.to_string(),
-                            order_state: order_state.to_string(),
-                            cluster_url,
-                        };
-                        let url = format!("{}/users/order-update-state", notifications_url);
-                        Either::A(
-                            serde_json::to_string(&email)
-                                .map_err(From::from)
-                                .into_future()
-                                .and_then(move |body| {
-                                    let mut headers = Headers::new();
-                                    headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                    client
-                                        .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                        .map_err(From::from)
-                                }),
-                        )
-                    } else {
-                        error!(
-                            "Sending notification to user can not be done. User with id: {} is not found.",
-                            user_id
-                        );
-                        Either::B(future::err(
-                            format_err!("User is not found in users microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
-                }
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.users_microservice
+            .get(Some(user_id.into()), user_id)
+            .and_then(move |user| {
+                user.ok_or_else(|| {
+                    error!(
+                        "Sending notification to user can not be done. User with id: {} is not found.",
+                        user_id
+                    );
+                    format_err!("User is not found in users microservice.")
+                        .context(Error::NotFound)
+                        .into()
+                }).into_future()
+            }).and_then(move |user| {
+                let user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = OrderUpdateStateForUser {
+                    user,
+                    order_slug: order_slug.to_string(),
+                    order_state: order_state.to_string(),
+                    cluster_url,
+                };
+                notifications_microservice.order_update_state_for_user(Initiator::Superadmin, email)
             })
     }
 
@@ -387,57 +286,33 @@ impl OrderServiceImpl {
         order_slug: OrderSlug,
         order_state: OrderState,
     ) -> impl Future<Item = (), Error = FailureError> {
-        let client = self.http_client.clone();
-        let notifications_url = self.config.service_url(StqService::Notifications);
-        let stores_url = self.config.service_url(StqService::Stores);
         let cluster_url = self.config.cluster.url.clone();
-        let url = format!("{}/{}/{}", stores_url, StqModel::Store.to_url(), store_id);
-        let mut headers = Headers::new();
-        headers.set(CurrencyHeader("STQ".to_string())); // stores accept requests only with Currency header
-        client
-            .request::<Option<Store>>(Method::Get, url, None, Some(headers))
-            .map_err(From::from)
-            .and_then({
-                let client = client.clone();
-                let notifications_url = notifications_url.clone();
-                let cluster_url = cluster_url.clone();
-                move |store| {
-                    if let Some(store) = store {
-                        Either::A(if let Some(store_email) = store.email {
-                            let email = OrderUpdateStateForStore {
-                                store_email,
-                                store_id: store.id.to_string(),
-                                order_slug: order_slug.to_string(),
-                                order_state: order_state.to_string(),
-                                cluster_url,
-                            };
-                            let url = format!("{}/stores/order-update-state", notifications_url);
-                            Either::A(
-                                serde_json::to_string(&email)
-                                    .map_err(From::from)
-                                    .into_future()
-                                    .and_then(move |body| {
-                                        let mut headers = Headers::new();
-                                        headers.set(Authorization("1".to_string())); //only superuser can send notifications
-                                        client
-                                            .request::<()>(Method::Post, url, Some(body), Some(headers))
-                                            .map_err(From::from)
-                                    }),
-                            )
-                        } else {
-                            Either::B(future::ok(()))
-                        })
-                    } else {
+        let notifications_microservice = self.notifications_microservice.clone();
+        self.stores_microservice
+            .get(store_id)
+            .and_then(move |store| {
+                store
+                    .ok_or_else(|| {
                         error!(
                             "Sending notification to store can not be done. Store with id: {} is not found.",
                             store_id
                         );
-                        Either::B(future::err(
-                            format_err!("Store is not found in stores microservice.")
-                                .context(Error::NotFound)
-                                .into(),
-                        ))
-                    }
+                        format_err!("Store is not found in stores microservice.")
+                            .context(Error::NotFound)
+                            .into()
+                    }).into_future()
+            }).and_then(move |store| {
+                if let Some(store_email) = store.email {
+                    let email = OrderUpdateStateForStore {
+                        store_email,
+                        store_id: store.id.to_string(),
+                        order_slug: order_slug.to_string(),
+                        order_state: order_state.to_string(),
+                        cluster_url,
+                    };
+                    Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
+                } else {
+                    Either::B(future::ok(()))
                 }
             })
     }
@@ -565,55 +440,34 @@ impl OrderServiceImpl {
     fn update_orders(self, orders_info: BillingOrdersVec) -> impl Future<Item = (Self, Vec<Option<Order>>), Error = (Self, FailureError)> {
         debug!("Updating orders status: {}", orders_info);
 
-        let client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
-
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
             match &order_info.status {
                 OrderState::AmountExpired | OrderState::TransactionPending => continue, // do not set these invoice statuses to orders
                 _ => {}
             }
-            let payload: UpdateStatePayload = order_info.clone().into();
-            let body = serde_json::to_string(&payload).unwrap_or_default();
-            let url = format!("{}/{}/by-id/{}", orders_url.clone(), StqModel::Order.to_url(), order_info.order_id);
-            let mut headers = Headers::new();
-            headers.set(Authorization(order_info.customer_id.0.to_string()));
-            let res = client
-                .request::<Option<Order>>(Method::Get, url, None, Some(headers))
-                .map_err(|e| {
-                    e.context("Setting new status in orders microservice error occured.")
-                        .context(Error::HttpClient)
-                        .into()
-                }).and_then({
-                    let client = client.clone();
-                    let orders_url = orders_url.clone();
-                    move |order| {
-                        if let Some(order) = order {
-                            Either::A(if order.state == order_info.status {
-                                // if this status already set, do not update
-                                Either::A(future::ok(None))
-                            } else {
-                                let url = format!("{}/{}/by-id/{}/status", orders_url, StqModel::Order.to_url(), order.id);
-                                let mut headers = Headers::new();
-                                headers.set(Authorization("1".to_string()));
-                                Either::B(
-                                    client
-                                        .request::<Option<Order>>(Method::Put, url, Some(body.clone()), Some(headers))
-                                        .map_err(|e| {
-                                            e.context("Setting new status in orders microservice error occured.")
-                                                .context(Error::HttpClient)
-                                                .into()
-                                        }),
-                                )
-                            })
-                        } else {
-                            Either::B(future::err(
-                                format_err!("Order is not found in orders microservice! id: {}", order_info.order_id.0)
-                                    .context(Error::NotFound)
-                                    .into(),
-                            ))
-                        }
+
+            let orders_microservice = self.orders_microservice.clone();
+
+            let order_id = order_info.order_id;
+
+            let res = self
+                .orders_microservice
+                .get_order(Some(order_info.customer_id.into()), OrderIdentifier::Id(order_info.order_id))
+                .and_then(move |order| {
+                    order
+                        .ok_or(
+                            format_err!("Order is not found in orders microservice! id: {}", order_id)
+                                .context(Error::NotFound)
+                                .into(),
+                        ).into_future()
+                }).and_then(move |order| {
+                    if order.state == order_info.status {
+                        // if this status already set, do not update
+                        Either::A(future::ok(None))
+                    } else {
+                        let payload: UpdateStatePayload = order_info.clone().into();
+                        Either::B(orders_microservice.set_order_state(Some(Initiator::Superadmin), OrderIdentifier::Id(order.id), payload))
                     }
                 });
             orders_futures.push(res);
@@ -632,43 +486,34 @@ impl OrderServiceImpl {
         track_id: Option<String>,
         comment: Option<String>,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
-        let orders_url = self.config.service_url(StqService::Orders);
-        let rpc_client = RestApiClient::new(&orders_url, self.user_id);
-
-        rpc_client
-            .get_order(OrderIdentifier::Slug(order_slug))
-            .map_err(move |e| {
-                parse_validation_errors(e.into(), &["order"])
-                    .context(format!("Getting order with slug {} in orders microservice failed.", order_slug))
-                    .into()
-            }).and_then(move |order| {
-                if let Some(order) = order {
-                    Either::A(if order.state == order_state {
-                        // if this status already set, do not update
-                        info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
-                        Either::A(future::ok(None))
-                    } else {
-                        info!(
-                            "order slug: {:?} status: {:?} start request update on orders",
-                            order_slug, order_state
-                        );
-                        Either::B(
-                            rpc_client
-                                .set_order_state(OrderIdentifier::Slug(order_slug), order_state, comment, track_id)
-                                .map_err(move |e| {
-                                    parse_validation_errors(e.into(), &["order"])
-                                        .context(format!(
-                                            "Setting order with slug {} state {} in orders microservice failed.",
-                                            order_slug, order_state
-                                        )).into()
-                                }),
-                        )
-                    })
-                } else {
-                    Either::B(future::err(
+        let orders_microservice = self.orders_microservice.clone();
+        self.orders_microservice
+            .get_order(None, OrderIdentifier::Slug(order_slug))
+            .and_then(move |order| {
+                order
+                    .ok_or(
                         format_err!("Order is not found in orders microservice! slug: {}", order_slug)
                             .context(Error::NotFound)
                             .into(),
+                    ).into_future()
+            }).and_then(move |order| {
+                if order.state == order_state {
+                    // if this status already set, do not update
+                    info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
+                    Either::A(future::ok(None))
+                } else {
+                    info!(
+                        "order slug: {:?} status: {:?} start request update on orders",
+                        order_slug, order_state
+                    );
+                    Either::B(orders_microservice.set_order_state(
+                        None,
+                        OrderIdentifier::Slug(order_slug),
+                        UpdateStatePayload {
+                            state: order_state,
+                            comment,
+                            track_id,
+                        },
                     ))
                 }
             }).then(|res| match res {
@@ -680,16 +525,15 @@ impl OrderServiceImpl {
     fn update_warehouse(self, orders: &[Option<Order>]) -> impl Future<Item = (Self, Vec<()>), Error = (Self, FailureError)> {
         debug!("Updating warehouses stock: {:?}", orders);
 
-        let warehouses_url = self.config.service_url(StqService::Warehouses);
         let mut orders_futures = vec![];
         for order in orders {
+            let warehouses_microservice = self.warehouses_microservice.clone();
             if let Some(order) = order {
                 if order.state == OrderState::Paid {
                     debug!("Updating warehouses stock with product id {}", order.product);
-                    let rpc_client = RestApiClient::new(&warehouses_url, Some(UserId(1))); // sending update from super user
                     let order_quantity = order.quantity;
-                    let res = rpc_client
-                        .find_by_product_id(order.product)
+                    let res = warehouses_microservice
+                        .find_by_product_id(Initiator::Superadmin, order.product)
                         .and_then(move |stocks| {
                             debug!("Updating warehouses stocks: {:?}", stocks);
                             for stock in stocks {
@@ -703,9 +547,13 @@ impl OrderServiceImpl {
                                     stock.warehouse_id, stock.product_id, new_quantity
                                 );
                                 return Either::A(
-                                    rpc_client
-                                        .set_product_in_warehouse(stock.warehouse_id, stock.product_id, Quantity(new_quantity))
-                                        .map(|_| ()),
+                                    warehouses_microservice
+                                        .set_product_in_warehouse(
+                                            Initiator::Superadmin,
+                                            stock.warehouse_id,
+                                            stock.product_id,
+                                            Quantity(new_quantity),
+                                        ).map(|_| ()),
                                 );
                             }
                             Either::B(future::ok(()))
@@ -732,49 +580,28 @@ impl OrderServiceImpl {
     // Contains reversal of Order creation
     fn create_revert(self) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let log = self.log.lock().unwrap().clone();
-        let http_client = self.http_client.clone();
-        let orders_url = self.config.service_url(StqService::Orders);
-        let billing_url = self.config.service_url(StqService::Billing);
+        let orders_microservice = self.orders_microservice.clone();
+        let billing_microservice = self.billing_microservice.clone();
+        let fut = iter_ok::<_, ()>(log).for_each(move |e| match e {
+            CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
+                debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
+                let result = orders_microservice
+                    .revert_convert_cart(Initiator::Superadmin, ConvertCartRevert { conversion_id })
+                    .then(|_| Ok(()));
 
-        let fut = iter_ok::<_, ()>(log).for_each(move |e| {
-            match e {
-                CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
-                    debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin can revert orders
-
-                    let payload = ConvertCartRevert { conversion_id };
-                    let body = serde_json::to_string(&payload).unwrap_or_default();
-
-                    Box::new(
-                        http_client
-                            .request::<CartHash>(
-                                Method::Post,
-                                format!("{}/{}/create_from_cart/revert", orders_url, StqModel::Order.to_url()),
-                                Some(body),
-                                Some(headers),
-                            ).then(|_| Ok(())),
-                    ) as Box<Future<Item = (), Error = ()>>
-                }
-
-                CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
-                    debug!("Reverting create invoice, saga_id: {}", saga_id);
-                    let mut headers = Headers::new();
-                    headers.set(Authorization("1".to_string())); // only super admin can revert invoice
-
-                    Box::new(
-                        http_client
-                            .request::<SagaId>(
-                                Method::Delete,
-                                format!("{}/invoices/by-saga-id/{}", billing_url, saga_id.0,),
-                                None,
-                                Some(headers),
-                            ).then(|_| Ok(())),
-                    ) as Box<Future<Item = (), Error = ()>>
-                }
-
-                _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
+                Box::new(result) as Box<Future<Item = (), Error = ()>>
             }
+
+            CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
+                debug!("Reverting create invoice, saga_id: {}", saga_id);
+                let result = billing_microservice
+                    .revert_create_invoice(Initiator::Superadmin, saga_id)
+                    .then(|_| Ok(()));
+
+                Box::new(result) as Box<Future<Item = (), Error = ()>>
+            }
+
+            _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
         });
 
         fut.then(|res| match res {
