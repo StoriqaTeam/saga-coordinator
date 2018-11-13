@@ -35,7 +35,7 @@ pipeline:
     - cargo_git_user
     - cargo_git_pass
     commands:
-    - git config --global url."https://$${CARGO_GIT_USER}:$${CARGO_GIT_PASS}@github.com/".insteadOf "https://github.com/"
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - rustup component add rustfmt-preview
     - cargo fmt -- --check
     - apt-get update && apt-get install -y ca-certificates
@@ -56,7 +56,7 @@ pipeline:
     - cargo_git_user
     - cargo_git_pass
     commands:
-    - git config --global url."https://$${CARGO_GIT_USER}:$${CARGO_GIT_PASS}@github.com/".insteadOf "https://github.com/"
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - cargo build --release --locked
     when:
       event: tag
@@ -68,8 +68,7 @@ pipeline:
     - cargo_git_user
     - cargo_git_pass
     commands:
-    - chmod -R 700 $HOME/.ssh
-    commands:
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - cargo build
     when:
       event: push
