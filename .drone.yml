@@ -61,6 +61,12 @@ pipeline:
     image: rust:1.30-stretch
     environment:
     - CARGO_HOME=deps
+    secrets:
+    - cargo_ssh_key
+    commands:
+    - mkdir $HOME/.ssh || true
+    - echo $CARGO_SSH_KEY > $HOME/.ssh/id_rsa
+    - chmod -R 700 $HOME/.ssh
     commands:
     - cargo build
     when:
