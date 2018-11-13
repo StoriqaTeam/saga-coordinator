@@ -31,7 +31,11 @@ pipeline:
     - RUN_MODE=k8s
     - RUST_BACKTRACE=1
     - CARGO_HOME=deps
+    secrets:
+    - cargo_git_user
+    - cargo_git_pass
     commands:
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - rustup component add rustfmt-preview
     - cargo fmt -- --check
     - apt-get update && apt-get install -y ca-certificates
@@ -48,7 +52,11 @@ pipeline:
     image: rust:1.30-stretch
     environment:
     - CARGO_HOME=deps
+    secrets: 
+    - cargo_git_user
+    - cargo_git_pass
     commands:
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - cargo build --release --locked
     when:
       event: tag
@@ -56,7 +64,11 @@ pipeline:
     image: rust:1.30-stretch
     environment:
     - CARGO_HOME=deps
+    secrets:
+    - cargo_git_user
+    - cargo_git_pass
     commands:
+    - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
     - cargo build
     when:
       event: push

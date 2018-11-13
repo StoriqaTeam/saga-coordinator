@@ -1,3 +1,5 @@
 FROM rust:1.30-stretch
 
+RUN git config --global url."https://stqcommon:Tz-q6qDL%23d3Mz8hm@github.com/".insteadOf "https://github.com/"
+
 VOLUME /usr/local/cargo

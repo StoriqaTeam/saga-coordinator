@@ -14,25 +14,25 @@ path = "src/main.rs"
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 config = { version = "0.9", default-features = false, features = ["toml"] }
-env_logger="0.5.6"
-failure = "0.1.1"
-futures = "0.1.17"
-futures-cpupool = "0.1.7"
+env_logger = "0.5"
+failure = "0.1"
+futures = "0.1"
+futures-cpupool = "0.1"
 hyper = "0.11"
-log="0.4"
+log = "0.4"
 regex = "0.2"
-serde = "^1.0.8"
-serde_derive = "^1.0.8"
+serde = "1.0"
+serde_derive = "1.0"
 serde_json = "1.0"
 stq_api = { path = "vendor/libstqbackend/api" }
-stq_http = { path = "vendor/libstqbackend/http" }
+stq_http = { git = "https://github.com/storiqateam/stq_http", tag = "v0.1.0" }
 stq_logging = { path = "vendor/libstqbackend/logging" }
 stq_router = { path = "vendor/libstqbackend/router" }
 stq_routes = { path = "vendor/libstqbackend/routes" }
 stq_static_resources = { path = "vendor/libstqbackend/static_resources" }
 stq_types = { path = "vendor/libstqbackend/types" }
 tokio-core = "0.1"
-tokio-signal = "0.2.6"
-uuid = { version = "*", features = ["use_std", "v4", "serde"] }
-validator = "0.7.1"
+tokio-signal = "0.2"
+uuid = { version = "0.6", features = ["use_std", "v4", "serde"] }
+validator = "0.7"
 sentry = "0.12"
