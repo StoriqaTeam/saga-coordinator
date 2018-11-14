@@ -14,6 +14,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate tokio_signal;
+extern crate tokio_timer;
 extern crate uuid;
 extern crate validator;
 #[macro_use]

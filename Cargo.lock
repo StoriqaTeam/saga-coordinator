@@ -1526,6 +1526,7 @@ dependencies = [
  "stq_types 0.1.0",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-signal 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-timer 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "validator 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

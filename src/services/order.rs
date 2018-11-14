@@ -560,7 +560,7 @@ impl OrderServiceImpl {
                         }).map_err(|e| {
                             let err = e
                                 .context("decrementing quantity in warehouses microservice failed.")
-                                .context(Error::RpcClient)
+                                .context(Error::HttpClient)
                                 .into();
                             error!("{}", err);
                             err

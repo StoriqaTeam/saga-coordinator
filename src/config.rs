@@ -23,6 +23,7 @@ pub struct Config {
     pub notification_urls: NotificationUrls,
     pub client: Client,
     pub sentry: Option<SentryConfig>,
+    pub service: Service,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -62,12 +63,19 @@ pub struct DevicesUrls {
     pub android: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Service {
+    pub processing_timeout_ms: u64,
+}
+
 impl Config {
     /// Creates config from base.toml, which are overwritten by <env>.toml, where
     /// env is one of development, test, production. After that it could be overwritten
     /// by environment variables like STQ_SAGA_LISTEN (this will override `listen` field in config)
     pub fn new() -> Result<Self, ConfigError> {
         let mut s = RawConfig::new();
+
+        s.set_default("service.processing_timeout_ms", 1000 as i64).unwrap();
 
         s.merge(File::with_name("config/base"))?;
 

@@ -8,7 +8,6 @@ use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
-use stq_http::client::ClientHandle as HttpClientHandle;
 use stq_static_resources::*;
 use stq_types::{BillingRole, DeliveryRole, RoleId, SagaId, StoresRole, UserId, UsersRole};
 
@@ -34,14 +33,12 @@ pub struct AccountServiceImpl {
     pub delivery_microservice: Arc<DeliveryMicroservice>,
     pub users_microservice: Arc<UsersMicroservice>,
     pub notifications_microservice: Arc<NotificationsMicroservice>,
-    pub http_client: HttpClientHandle,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateProfileOperationLog>>,
 }
 
 impl AccountServiceImpl {
     pub fn new(
-        http_client: HttpClientHandle,
         config: config::Config,
         stores_microservice: Arc<StoresMicroservice>,
         billing_microservice: Arc<BillingMicroservice>,
@@ -51,7 +48,6 @@ impl AccountServiceImpl {
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateProfileOperationLog::new()));
         Self {
-            http_client,
             config,
             log,
             stores_microservice,
