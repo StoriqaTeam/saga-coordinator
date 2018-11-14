@@ -17,7 +17,7 @@ use hyper::server::Request;
 use hyper::Method;
 
 use stq_api::orders::BuyNow;
-use stq_http::client::ClientHandle as HttpClientHandle;
+use stq_http::client::{ClientHandle as HttpClientHandle, HttpClientWithDefaultHeaders, TimeLimitedHttpClient};
 use stq_http::controller::Controller;
 use stq_http::controller::ControllerFuture;
 use stq_http::errors::ErrorMessageWrapper;
@@ -31,7 +31,6 @@ use stq_router::RouteParser;
 use self::routes::Route;
 use config::Config;
 use errors::Error;
-use http::{HttpClientWithDefaultHeaders, TimeLimitedHttpClient};
 use microservice::{
     BillingMicroserviceImpl, DeliveryMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl,
     UsersMicroserviceImpl, WarehousesMicroserviceImpl,

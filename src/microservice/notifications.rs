@@ -2,6 +2,7 @@ use failure::Fail;
 use futures::Future;
 use hyper::Method;
 
+use stq_http::client::HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
@@ -12,7 +13,6 @@ use stq_static_resources::{
 use super::{ApiFuture, Initiator};
 use config;
 use errors::Error;
-use http::HttpClient;
 
 pub trait NotificationsMicroservice {
     fn apply_email_verification(&self, initiator: Option<Initiator>, payload: ApplyEmailVerificationForUser) -> ApiFuture<()>;

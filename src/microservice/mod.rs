@@ -6,9 +6,8 @@ use serde::de::Deserialize;
 use serde::ser::Serialize;
 use serde_json;
 
+use stq_http::client::HttpClient;
 use stq_types::*;
-
-use http::HttpClient;
 
 mod orders;
 pub use self::orders::*;
