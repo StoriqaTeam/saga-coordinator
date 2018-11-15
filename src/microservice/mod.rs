@@ -51,13 +51,11 @@ fn request<C: HttpClient + 'static, T: Serialize, S: for<'a> Deserialize<'a> + '
         Ok(None)
     };
 
-    body.into_future()
-        .map_err(Error::from)
-        .and_then(move |serialized_body|
-            http_client
-                .request_json::<S>(method, url, serialized_body, headers)
-                .map_err(Error::from)
-        )
+    body.into_future().map_err(Error::from).and_then(move |serialized_body| {
+        http_client
+            .request_json::<S>(method, url, serialized_body, headers)
+            .map_err(Error::from)
+    })
 }
 
 impl From<UserId> for Initiator {
