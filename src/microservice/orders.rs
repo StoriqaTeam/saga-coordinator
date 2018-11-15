@@ -3,6 +3,7 @@ use futures::Future;
 use hyper::Method;
 
 use stq_api::orders::{BuyNow, Order};
+use stq_http::client::HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_types::*;
@@ -11,7 +12,6 @@ use super::{ApiFuture, Initiator};
 
 use config;
 use errors::Error;
-use http::HttpClient;
 use models::*;
 use services::parse_validation_errors;
 

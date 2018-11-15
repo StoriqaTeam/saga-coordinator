@@ -13,10 +13,12 @@ services:
       - stq_cargo_cache:/usr/local/cargo
     environment:
       - STQ_USERS_ADDR=http://users:8000
-      - STQ_STORES_ADDR=http://stores:8001
+      - STQ_STORES_ADDR=http://stores:8000
       - "RUST_LOG=saga_coordinator=debug"
+    ports:
+      - "8000"
     expose:
-      - 8004
+      - 8000
     stdin_open: true
 
 volumes:

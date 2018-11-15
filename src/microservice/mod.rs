@@ -6,9 +6,8 @@ use serde::de::Deserialize;
 use serde::ser::Serialize;
 use serde_json;
 
+use stq_http::client::HttpClient;
 use stq_types::*;
-
-use http::HttpClient;
 
 mod orders;
 pub use self::orders::*;
@@ -52,10 +51,11 @@ fn request<C: HttpClient + 'static, T: Serialize, S: for<'a> Deserialize<'a> + '
         Ok(None)
     };
 
-    body.into_future()
-        .map_err(From::from)
-        .and_then(move |serialized_body| http_client.request(method, url, serialized_body, headers))
-        .and_then(|response| response.parse::<S>().into_future())
+    body.into_future().map_err(Error::from).and_then(move |serialized_body| {
+        http_client
+            .request_json::<S>(method, url, serialized_body, headers)
+            .map_err(Error::from)
+    })
 }
 
 impl From<UserId> for Initiator {

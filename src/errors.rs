@@ -14,8 +14,6 @@ pub enum Error {
     Validate(ValidationErrors),
     #[fail(display = "Http client error")]
     HttpClient,
-    #[fail(display = "Rpc client error")]
-    RpcClient,
     #[fail(display = "Server is refusing to fullfil the reqeust")]
     Forbidden,
     #[fail(display = "Unknown server error")]
@@ -28,7 +26,7 @@ impl Codeable for Error {
             Error::NotFound => StatusCode::NotFound,
             Error::Validate(_) => StatusCode::BadRequest,
             Error::Parse => StatusCode::UnprocessableEntity,
-            Error::HttpClient | Error::RpcClient | Error::Unknown => StatusCode::InternalServerError,
+            Error::HttpClient | Error::Unknown => StatusCode::InternalServerError,
             Error::Forbidden => StatusCode::Forbidden,
         }
     }
