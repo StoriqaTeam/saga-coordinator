@@ -32,14 +32,28 @@ url = "http://nightly.stq.cloud"
 [notification_urls]
 
   [notification_urls.verify_email]
-  web = "https://localhost/verify_email"
-  ios = "storiqawallet://localhost/verify_email"
-  android = "storiqawallet://localhost/verify_email"
 
+    [notification_urls.verify_email.marketplace]
+    web = "https://localhost/verify_email"
+    ios = "storiqawallet://localhost/verify_email"
+    android = "storiqawallet://localhost/verify_email"
+    
+    [notification_urls.verify_email.wallet]
+    web = "https://localhost/verify_email"
+    ios = "storiqawallet://localhost/verify_email"
+    android = "storiqawallet://localhost/verify_email"
+  
   [notification_urls.reset_password]
-  web = "https://localhost/verify_email"
-  ios = "storiqawallet://localhost/verify_email"
-  android = "storiqawallet://localhost/verify_email"
+
+    [notification_urls.reset_password.marketplace]
+    web = "https://localhost/reset_password"
+    ios = "storiqawallet://localhost/reset_password"
+    android = "storiqawallet://localhost/reset_password"
+    
+    [notification_urls.reset_password.wallet]
+    web = "https://localhost/reset_password"
+    ios = "storiqawallet://localhost/reset_password"
+    android = "storiqawallet://localhost/reset_password"
 
 [client]
 http_client_buffer_size = 10
