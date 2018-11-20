@@ -9,7 +9,7 @@ use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
-use stq_types::{BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
 
 use super::parse_validation_errors;
 use config;
@@ -20,6 +20,14 @@ use services::types::ServiceFuture;
 
 pub trait StoreService {
     fn create(self, input: NewStore) -> ServiceFuture<Box<StoreService>, Option<Store>>;
+    /// Set moderation status for specific store
+    fn set_store_moderation_status(self, payload: StoreModerate) -> ServiceFuture<Box<StoreService>, Store>;
+    /// Send store to moderation from store manager
+    fn send_to_moderation(self, store_id: StoreId) -> ServiceFuture<Box<StoreService>, Store>;
+    /// Set moderation status for base_product_id
+    fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Box<StoreService>, ()>;
+    /// send base product to moderation from store manager
+    fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Box<StoreService>, ()>;
 }
 
 /// Attributes services, responsible for Attribute-related CRUD operations
@@ -327,6 +335,51 @@ impl StoreServiceImpl {
             Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
         })
     }
+
+    fn set_store_moderation_status(self, payload: StoreModerate) -> ServiceFuture<Self, Store> {
+        let res = self.stores_microservice.set_store_moderation_status(payload).then(|res| match res {
+            Ok(store) => Ok((self, store)),
+            Err(_) => Err((self, format_err!("Store service set_moderation_status error occurred."))),
+        });
+
+        Box::new(res)
+    }
+
+    fn send_to_moderation(self, store_id: StoreId) -> ServiceFuture<Self, Store> {
+        let res = self.stores_microservice.send_to_moderation(store_id).then(|res| match res {
+            Ok(store) => Ok((self, store)),
+            Err(_) => Err((self, format_err!("Store service send_to_moderation error occurred."))),
+        });
+
+        Box::new(res)
+    }
+
+    fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Self, ()> {
+        let res = self
+            .stores_microservice
+            .set_moderation_status_base_product(payload)
+            .then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(_) => Err((
+                    self,
+                    format_err!("Store service set_moderation_status_base_product error occurred."),
+                )),
+            });
+
+        Box::new(res)
+    }
+
+    fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Self, ()> {
+        let res = self
+            .stores_microservice
+            .send_to_moderation_base_product(base_product_id)
+            .then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(_) => Err((self, format_err!("Store service send_to_moderation_base_product error occurred."))),
+            });
+
+        Box::new(res)
+    }
 }
 
 impl StoreService for StoreServiceImpl {
@@ -360,6 +413,40 @@ impl StoreService for StoreServiceImpl {
                         ),
                     )
                 }),
+        )
+    }
+
+    fn set_store_moderation_status(self, payload: StoreModerate) -> ServiceFuture<Box<StoreService>, Store> {
+        Box::new(
+            self.set_store_moderation_status(payload)
+                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+
+    /// Send store to moderation from store manager
+    fn send_to_moderation(self, store_id: StoreId) -> ServiceFuture<Box<StoreService>, Store> {
+        Box::new(
+            self.send_to_moderation(store_id)
+                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+
+    /// Set moderation status for base_product_id
+    fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Box<StoreService>, ()> {
+        Box::new(
+            self.set_moderation_status_base_product(payload)
+                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+    /// send base product to moderation from store manager
+    fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Box<StoreService>, ()> {
+        Box::new(
+            self.send_to_moderation_base_product(base_product_id)
+                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
 }

@@ -1,5 +1,5 @@
 use stq_router::RouteParser;
-use stq_types::OrderSlug;
+use stq_types::{BaseProductId, OrderSlug, StoreId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -13,6 +13,10 @@ pub enum Route {
     BuyNow,
     OrdersUpdateStateByBilling,
     OrdersManualSetState { order_slug: OrderSlug },
+    StoreModerate,
+    StoreModeration(StoreId),
+    BaseProductModerate,
+    BaseProductModeration(BaseProductId),
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -33,6 +37,24 @@ pub fn create_route_parser() -> RouteParser<Route> {
     router.add_route(r"^/create_order$", || Route::CreateOrder);
 
     router.add_route(r"^/buy_now$", || Route::BuyNow);
+
+    router.add_route(r"^stores/moderate$", || Route::StoreModerate);
+
+    router.add_route_with_params(r"^/stores/(\d+)/moderation$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse::<StoreId>().ok())
+            .map(Route::StoreModeration)
+    });
+
+    router.add_route(r"^base_products/moderate$", || Route::BaseProductModerate);
+
+    router.add_route_with_params(r"^/base_products/(\d+)/moderation$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse::<BaseProductId>().ok())
+            .map(Route::BaseProductModeration)
+    });
 
     router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);
 
