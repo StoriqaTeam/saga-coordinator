@@ -82,6 +82,7 @@ impl AccountServiceImpl {
             user: new_user,
             identity: new_ident,
             device: input.device.clone(),
+            project: input.project.clone(),
         };
 
         let log = self.log.clone();
@@ -243,19 +244,34 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
-    fn notify_user(self, user: User, device: Option<Device>) -> ServiceFuture<Self, ()> {
+    fn notify_user(self, user: User, device: Option<Device>, project: Option<Project>) -> ServiceFuture<Self, ()> {
         debug!("Notifiing user in notificatins microservice");
-        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
-        let verify_email_path = device
-            .map(|device| match device {
-                Device::WEB => web.clone(),
-                Device::IOS => ios,
-                Device::Android => android,
-            }).unwrap_or_else(|| web);
+        let project_ = project.unwrap_or_else(|| Project::MarketPlace);
+        let verify_email_path = match project_ {
+            Project::MarketPlace => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.marketplace.clone();
+                device
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+            Project::Wallet => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.wallet.clone();
+                device
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+        };
 
         let reset = ResetRequest {
             email: user.email.clone(),
             device: device,
+            project: project,
         };
         let user_id = user.id;
         let notifications_microservice = self.notifications_microservice.clone();
@@ -287,6 +303,7 @@ impl AccountServiceImpl {
         let saga_id = SagaId::new();
         let provider = input.identity.provider.clone();
         let device = input.device.clone();
+        let project = input.project.clone();
 
         Box::new(
             self.create_user(input, saga_id)
@@ -298,7 +315,7 @@ impl AccountServiceImpl {
                 .and_then(move |(s, user)| {
                     if provider == Provider::Email {
                         // only if provider is email it needs to ber verified
-                        Box::new(s.notify_user(user.clone(), device).then(|res| match res {
+                        Box::new(s.notify_user(user.clone(), device, project).then(|res| match res {
                             Ok((s, _)) => Ok((s, user)),
                             Err((s, _)) => Ok((s, user)),
                         })) as ServiceFuture<Self, User>
@@ -408,15 +425,31 @@ impl AccountService for AccountServiceImpl {
     }
 
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
-        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.clone();
-        let reset_password_path = input
-            .device
-            .clone()
-            .map(|device| match device {
-                Device::WEB => web.clone(),
-                Device::IOS => ios,
-                Device::Android => android,
-            }).unwrap_or_else(|| web);
+        let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
+        let reset_password_path = match project_ {
+            Project::MarketPlace => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.marketplace.clone();
+                input
+                    .device
+                    .clone()
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+            Project::Wallet => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.wallet.clone();
+                input
+                    .device
+                    .clone()
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+        };
 
         let users_microservice = self.users_microservice.clone();
         let notifications_microservice = self.notifications_microservice.clone();
@@ -500,15 +533,31 @@ impl AccountService for AccountServiceImpl {
     }
 
     fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
-        let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.clone();
-        let verify_email_path = input
-            .device
-            .clone()
-            .map(|device| match device {
-                Device::WEB => web.clone(),
-                Device::IOS => ios,
-                Device::Android => android,
-            }).unwrap_or_else(|| web);
+        let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
+        let verify_email_path = match project_ {
+            Project::MarketPlace => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.marketplace.clone();
+                input
+                    .device
+                    .clone()
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+            Project::Wallet => {
+                let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.wallet.clone();
+                input
+                    .device
+                    .clone()
+                    .map(|device| match device {
+                        Device::WEB => web.clone(),
+                        Device::IOS => ios,
+                        Device::Android => android,
+                    }).unwrap_or_else(|| web)
+            }
+        };
 
         let users_microservice = self.users_microservice.clone();
         let notifications_microservice = self.notifications_microservice.clone();

@@ -52,8 +52,8 @@ pub struct Cluster {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NotificationUrls {
-    pub verify_email: DevicesUrls,
-    pub reset_password: DevicesUrls,
+    pub verify_email: ProjectUrls,
+    pub reset_password: ProjectUrls,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +61,12 @@ pub struct DevicesUrls {
     pub web: String,
     pub ios: String,
     pub android: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProjectUrls {
+    pub marketplace: DevicesUrls,
+    pub wallet: DevicesUrls,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
