@@ -35,8 +35,8 @@ use microservice::{
     UsersMicroserviceImpl, WarehousesMicroserviceImpl,
 };
 use models::{
-    BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile,
-    UpdateStatePayload,
+    BaseProductModerate, BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest,
+    SagaCreateProfile, StoreModerate, UpdateStatePayload,
 };
 use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};
@@ -270,6 +270,46 @@ impl Controller for ControllerImpl {
                             .map(|(_, order)| order)
                             .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occured.")))
                     }),
+            ),
+
+            // POST /stores/moderate
+            (&Method::Post, Some(Route::StoreModerate)) => serialize_future(
+                parse_body::<StoreModerate>(req.body())
+                    .map_err(|e| FailureError::from(e.context("Parsing body failed, target: StoreModerate").context(Error::Parse)))
+                    .and_then(move |store_moderate| {
+                        store_service
+                            .set_store_moderation_status(store_moderate)
+                            .map(|(_, store)| store)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during change store status occured.")))
+                    }),
+            ),
+
+            // POST /stores/moderation
+            (&Method::Post, Some(Route::StoreModeration(store_id))) => serialize_future(
+                store_service
+                    .send_to_moderation(store_id)
+                    .map(|(_, store)| store)
+                    .map_err(|(_, e)| FailureError::from(e.context("Error sending store to moderation occured."))),
+            ),
+
+            // POST /base_products/moderate
+            (&Method::Post, Some(Route::BaseProductModerate)) => serialize_future(
+                parse_body::<BaseProductModerate>(req.body())
+                    .map_err(|e| FailureError::from(e.context("Parsing body failed, target: BaseProductModerate").context(Error::Parse)))
+                    .and_then(move |base_product_moderate| {
+                        store_service
+                            .set_moderation_status_base_product(base_product_moderate)
+                            .map(|(_, _)| ())
+                            .map_err(|(_, e)| FailureError::from(e.context("Error change base product status occured.")))
+                    }),
+            ),
+
+            // POST /base_products/moderation
+            (&Method::Post, Some(Route::BaseProductModeration(base_product_id))) => serialize_future(
+                store_service
+                    .send_to_moderation_base_product(base_product_id)
+                    .map(|(_, _)| ())
+                    .map_err(|(_, e)| FailureError::from(e.context("Error sending base product to moderation occured."))),
             ),
 
             // Fallback
