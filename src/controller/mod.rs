@@ -36,7 +36,7 @@ use microservice::{
 };
 use models::{
     BaseProductModerate, BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest,
-    SagaCreateProfile, StoreModerate, UpdateStatePayload,
+    SagaCreateProfile, StoreModerate, UpdateStatePayload, VerifyRequest,
 };
 use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};
@@ -143,10 +143,10 @@ impl Controller for ControllerImpl {
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmail)) => serialize_future(
-                parse_body::<ResetRequest>(req.body())
+                parse_body::<VerifyRequest>(req.body())
                     .map_err(|e| {
                         FailureError::from(
-                            e.context("Parsing body // POST /email_verify in ResetRequest failed!")
+                            e.context("Parsing body // POST /email_verify in VerifyRequest failed!")
                                 .context(Error::Parse),
                         )
                     }).and_then(move |profile| {

@@ -2,6 +2,7 @@ use std::fmt;
 use std::time::SystemTime;
 
 use chrono::NaiveDate;
+use uuid::Uuid;
 
 use stq_static_resources::{Device, Gender, Project, Provider};
 use stq_types::{MerchantId, RoleId, SagaId, UserId};
@@ -87,6 +88,14 @@ pub struct Merchant {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ResetRequest {
+    pub email: String,
+    pub device: Option<Device>,
+    pub project: Option<Project>,
+    pub uuid: Option<Uuid>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VerifyRequest {
     pub email: String,
     pub device: Option<Device>,
     pub project: Option<Project>,
