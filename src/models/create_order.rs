@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::time::SystemTime;
 
-use stq_api::orders::{AddressFull, BuyNow, CouponInfo, DeliveryInfo, Order};
+use uuid::Uuid;
+
+use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order};
 use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
@@ -18,6 +20,26 @@ pub struct ConvertCart {
     pub currency: Currency,
     pub coupons: HashMap<CouponId, CouponInfo>,
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
+    pub uuid: Uuid,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BuyNow {
+    pub product_id: ProductId,
+    pub customer_id: UserId,
+    pub store_id: StoreId,
+    pub address: AddressFull,
+    pub receiver_name: String,
+    pub receiver_email: String,
+    pub price: ProductSellerPrice,
+    pub quantity: Quantity,
+    pub currency: Currency,
+    pub receiver_phone: String,
+    pub pre_order: bool,
+    pub pre_order_days: i32,
+    pub coupon: Option<CouponInfo>,
+    pub delivery_info: Option<DeliveryInfo>,
+    pub uuid: Uuid,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]

@@ -16,7 +16,6 @@ use hyper::header::Headers;
 use hyper::server::Request;
 use hyper::Method;
 
-use stq_api::orders::BuyNow;
 use stq_http::client::{ClientHandle as HttpClientHandle, HttpClientWithDefaultHeaders, TimeLimitedHttpClient};
 use stq_http::controller::Controller;
 use stq_http::controller::ControllerFuture;
@@ -36,7 +35,8 @@ use microservice::{
     UsersMicroserviceImpl, WarehousesMicroserviceImpl,
 };
 use models::{
-    BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile, UpdateStatePayload,
+    BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile,
+    UpdateStatePayload,
 };
 use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};

@@ -7,7 +7,7 @@ use futures::future::{self, join_all, Either};
 use futures::prelude::*;
 use futures::stream::iter_ok;
 
-use stq_api::orders::{BuyNow, Order};
+use stq_api::orders::Order;
 use stq_static_resources::{
     EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };

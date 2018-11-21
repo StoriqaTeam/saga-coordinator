@@ -2,7 +2,7 @@ use failure::Fail;
 use futures::Future;
 use hyper::Method;
 
-use stq_api::orders::{BuyNow, Order};
+use stq_api::orders::Order;
 use stq_http::client::HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
