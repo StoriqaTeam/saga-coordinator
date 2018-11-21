@@ -1,6 +1,7 @@
 use std::time::SystemTime;
 
 use serde_json;
+use uuid::Uuid;
 
 use stq_static_resources::ModerationStatus;
 use stq_types::{RoleEntryId, RoleId, StoreId, UserId};
@@ -68,6 +69,7 @@ pub struct NewStore {
     pub street_number: Option<String>,
     pub place_id: Option<String>,
     pub saga_id: Option<String>,
+    pub uuid: Uuid,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
