@@ -38,7 +38,7 @@ pub fn create_route_parser() -> RouteParser<Route> {
 
     router.add_route(r"^/buy_now$", || Route::BuyNow);
 
-    router.add_route(r"^stores/moderate$", || Route::StoreModerate);
+    router.add_route(r"^/stores/moderate$", || Route::StoreModerate);
 
     router.add_route_with_params(r"^/stores/(\d+)/moderation$", |params| {
         params
@@ -47,7 +47,7 @@ pub fn create_route_parser() -> RouteParser<Route> {
             .map(Route::StoreModeration)
     });
 
-    router.add_route(r"^base_products/moderate$", || Route::BaseProductModerate);
+    router.add_route(r"^/base_products/moderate$", || Route::BaseProductModerate);
 
     router.add_route_with_params(r"^/base_products/(\d+)/moderation$", |params| {
         params
