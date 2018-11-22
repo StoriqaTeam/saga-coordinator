@@ -3,13 +3,19 @@ use std::sync::{Arc, Mutex};
 use failure::Error as FailureError;
 use failure::Fail;
 use futures;
-use futures::future;
+use futures::future::{self, join_all, Either};
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
 use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+
+use stq_static_resources::{
+    ApplyEmailVerificationForUser, ApplyPasswordResetForUser, BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser,
+    EmailUser, EmailVerificationForUser, OrderCreateForStore, OrderCreateForUser, OrderUpdateStateForStore, OrderUpdateStateForUser,
+    PasswordResetForUser, StoreModerationStatusForModerator, StoreModerationStatusForUser,
+};
 
 use super::parse_validation_errors;
 use config;
@@ -387,29 +393,97 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    /*fn notify_moderator_store_update_moderation_status(
+    fn notify_moderator_store_update_moderation_status(
         &self,
         user_id: UserId,
-        store: Store,
+        store_id: StoreId,
     ) -> impl Future<Item = (), Error = FailureError> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
-        let 
+        let users_microservice = self.users_microservice.clone();
 
+        users_microservice.get(Some(Initiator::Superadmin), user_id).and_then(move |user| {
+            if let Some(user) = user {
+                let email_user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = StoreModerationStatusForModerator {
+                    user: email_user,
+                    store_id: store_id.to_string(),
+                    cluster_url,
+                };
+                Either::A(notifications_microservice.store_moderation_status_for_moderator(Initiator::Superadmin, email))
+            } else {
+                Either::B(future::ok(()))
+            }
+        })
+    }
 
-        if let Some(store_email) = store.email {
-            let email = OrderUpdateStateForStore {
-                store_email,
-                store_id: store.id.to_string(),
-                order_slug: order_slug.to_string(),
-                order_state: order_state.to_string(),
-                cluster_url,
-            };
-            Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
-        } else {
-            Either::B(future::ok(()))
-        }
-    }*/
+    fn notify_moderator_base_product_update_moderation_status(
+        &self,
+        user_id: UserId,
+        store_id: StoreId,
+        base_product_id: BaseProductId,
+    ) -> impl Future<Item = (), Error = FailureError> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+
+        users_microservice.get(Some(Initiator::Superadmin), user_id).and_then(move |user| {
+            if let Some(user) = user {
+                let email_user = EmailUser {
+                    email: user.email.clone(),
+                    first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                    last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                };
+                let email = BaseProductModerationStatusForModerator {
+                    user: email_user,
+                    store_id: store_id.to_string(),
+                    base_product_id: base_product_id.to_string(),
+                    cluster_url,
+                };
+                Either::A(notifications_microservice.base_product_moderation_status_for_moderator(Initiator::Superadmin, email))
+            } else {
+                Either::B(future::ok(()))
+            }
+        })
+    }
+
+    fn notify_manager_store_update_moderation_status(
+        &self,
+        store_email: &str,
+        store_id: StoreId,
+    ) -> impl Future<Item = (), Error = FailureError> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+
+        let email = StoreModerationStatusForUser {
+            store_email: store_email.to_string(),
+            store_id: store_id.to_string(),
+            cluster_url,
+        };
+        notifications_microservice.store_moderation_status_for_user(Initiator::Superadmin, email)
+    }
+
+    fn notify_manager_base_product_update_moderation_status(
+        &self,
+        store_email: &str,
+        store_id: StoreId,
+        base_product_id: BaseProductId,
+    ) -> impl Future<Item = (), Error = FailureError> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+
+        let email = BaseProductModerationStatusForUser {
+            store_email: store_email.to_string(),
+            store_id: store_id.to_string(),
+            base_product_id: base_product_id.to_string(),
+            cluster_url,
+        };
+        notifications_microservice.base_product_moderation_status_for_user(Initiator::Superadmin, email)
+    }
 }
 
 impl StoreService for StoreServiceImpl {
