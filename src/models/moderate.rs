@@ -12,3 +12,11 @@ pub struct BaseProductModerate {
     pub base_product_id: BaseProductId,
     pub status: ModerationStatus,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BaseProduct {
+    pub id: BaseProductId,
+    pub store_id: StoreId,
+    pub slug: String,
+    pub status: ModerationStatus,
+}

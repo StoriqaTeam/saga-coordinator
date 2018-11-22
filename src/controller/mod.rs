@@ -112,8 +112,10 @@ impl Controller for ControllerImpl {
             config.clone(),
             orders_microservice.clone(),
             stores_microservice.clone(),
+            notifications_microservice.clone(),
             billing_microservice.clone(),
             warehouses_microservice.clone(),
+            users_microservice.clone(),
             delivery_microservice.clone(),
         );
 

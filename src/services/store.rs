@@ -34,9 +34,11 @@ pub trait StoreService {
 pub struct StoreServiceImpl {
     pub orders_microservice: Arc<OrdersMicroservice>,
     pub stores_microservice: Arc<StoresMicroservice>,
+    pub notifications_microservice: Arc<NotificationsMicroservice>,
     pub billing_microservice: Arc<BillingMicroservice>,
     pub warehouses_microservice: Arc<WarehousesMicroservice>,
     pub delivery_microservice: Arc<DeliveryMicroservice>,
+    pub users_microservice: Arc<UsersMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateStoreOperationLog>>,
 }
@@ -46,8 +48,10 @@ impl StoreServiceImpl {
         config: config::Config,
         orders_microservice: Arc<OrdersMicroservice>,
         stores_microservice: Arc<StoresMicroservice>,
+        notifications_microservice: Arc<NotificationsMicroservice>,
         billing_microservice: Arc<BillingMicroservice>,
         warehouses_microservice: Arc<WarehousesMicroservice>,
+        users_microservice: Arc<UsersMicroservice>,
         delivery_microservice: Arc<DeliveryMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
@@ -56,8 +60,10 @@ impl StoreServiceImpl {
             log,
             orders_microservice,
             stores_microservice,
+            notifications_microservice,
             billing_microservice,
             warehouses_microservice,
+            users_microservice,
             delivery_microservice,
         }
     }
@@ -380,6 +386,30 @@ impl StoreServiceImpl {
 
         Box::new(res)
     }
+
+    /*fn notify_moderator_store_update_moderation_status(
+        &self,
+        user_id: UserId,
+        store: Store,
+    ) -> impl Future<Item = (), Error = FailureError> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let 
+
+
+        if let Some(store_email) = store.email {
+            let email = OrderUpdateStateForStore {
+                store_email,
+                store_id: store.id.to_string(),
+                order_slug: order_slug.to_string(),
+                order_state: order_state.to_string(),
+                cluster_url,
+            };
+            Either::A(notifications_microservice.order_update_state_for_store(Initiator::Superadmin, email))
+        } else {
+            Either::B(future::ok(()))
+        }
+    }*/
 }
 
 impl StoreService for StoreServiceImpl {

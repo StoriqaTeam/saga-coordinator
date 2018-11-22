@@ -1,8 +1,6 @@
-use failure::Error as FailureError;
 use failure::Fail;
-use futures::{Future, IntoFuture};
+use futures::Future;
 use hyper::Method;
-use serde_json;
 
 use stq_http::client::HttpClient;
 use stq_routes::model::Model as StqModel;
@@ -25,8 +23,8 @@ pub trait StoresMicroservice {
     fn get(&self, store: StoreId) -> ApiFuture<Option<Store>>;
     fn set_store_moderation_status(&self, payload: StoreModerate) -> ApiFuture<Store>;
     fn send_to_moderation(&self, store_id: StoreId) -> ApiFuture<Store>;
-    fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<()>;
-    fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<()>;
+    fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
+    fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -140,20 +138,13 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         )
     }
 
-    fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<()> {
+    fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct> {
         let url = format!("{}/{}/moderate", self.stores_url(), StqModel::BaseProduct.to_url());
-        let body = serde_json::to_string(&payload);
         let http_client = self.http_client.clone();
 
         Box::new(
-            body.into_future()
-                .map_err(FailureError::from)
-                .and_then(move |serialized_body| {
-                    http_client
-                        .request(Method::Post, url, Some(serialized_body), None)
-                        .map(|_| ())
-                        .map_err(FailureError::from)
-                }).map_err(|e| {
+            super::request::<_, BaseProductModerate, BaseProduct>(self.http_client.clone(), Method::Post, url, Some(payload), None)
+                .map_err(|e| {
                     parse_validation_errors(e.into(), &["base_product"])
                         .context("Set new status for base_product in stores microservice failed.")
                         .context(Error::HttpClient)
@@ -162,7 +153,7 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         )
     }
 
-    fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<()> {
+    fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<BaseProduct> {
         let url = format!(
             "{}/{}/{}/moderation",
             self.stores_url(),
@@ -170,12 +161,14 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
             base_product_id
         );
 
-        Box::new(self.http_client.request(Method::Post, url, None, None).map(|_| ()).map_err(|e| {
-            parse_validation_errors(e.into(), &["base_product"])
-                .context("Send base_product to moderation in stores microservice failed.")
-                .context(Error::HttpClient)
-                .into()
-        }))
+        Box::new(
+            super::request::<_, (), BaseProduct>(self.http_client.clone(), Method::Post, url, None, None).map_err(|e| {
+                parse_validation_errors(e.into(), &["base_product"])
+                    .context("Send base_product to moderation in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
     }
 }
 
