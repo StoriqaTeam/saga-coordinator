@@ -21,7 +21,7 @@ pub trait UsersMicroservice {
     fn get_by_email(&self, initiator: Option<Initiator>, email: &str) -> ApiFuture<Option<User>>;
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<UsersRole>>;
     fn delete_user(&self, initiator: Option<Initiator>, saga_id: SagaId) -> ApiFuture<User>;
-    fn create_email_verify_token(&self, initiator: Option<Initiator>, payload: ResetRequest) -> ApiFuture<String>;
+    fn create_email_verify_token(&self, initiator: Option<Initiator>, payload: VerifyRequest) -> ApiFuture<String>;
     fn create_role(&self, initiator: Option<Initiator>, payload: NewRole<UsersRole>) -> ApiFuture<NewRole<UsersRole>>;
     fn create_user(&self, initiator: Option<Initiator>, payload: SagaCreateProfile) -> ApiFuture<User>;
     fn get(&self, initiator: Option<Initiator>, user_id: UserId) -> ApiFuture<Option<User>>;
@@ -110,7 +110,7 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
         )
     }
 
-    fn create_email_verify_token(&self, initiator: Option<Initiator>, payload: ResetRequest) -> ApiFuture<String> {
+    fn create_email_verify_token(&self, initiator: Option<Initiator>, payload: VerifyRequest) -> ApiFuture<String> {
         let url = format!("{}/{}/email_verify_token", self.users_url(), StqModel::User.to_url());
         Box::new(
             super::request(

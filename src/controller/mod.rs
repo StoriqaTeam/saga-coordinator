@@ -16,7 +16,6 @@ use hyper::header::Headers;
 use hyper::server::Request;
 use hyper::Method;
 
-use stq_api::orders::BuyNow;
 use stq_http::client::{ClientHandle as HttpClientHandle, HttpClientWithDefaultHeaders, TimeLimitedHttpClient};
 use stq_http::controller::Controller;
 use stq_http::controller::ControllerFuture;
@@ -36,8 +35,8 @@ use microservice::{
     UsersMicroserviceImpl, WarehousesMicroserviceImpl,
 };
 use models::{
-    BaseProductModerate, BillingOrdersVec, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest, SagaCreateProfile,
-    StoreModerate, UpdateStatePayload,
+    BaseProductModerate, BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest,
+    SagaCreateProfile, StoreModerate, UpdateStatePayload, VerifyRequest,
 };
 use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};
@@ -146,10 +145,10 @@ impl Controller for ControllerImpl {
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmail)) => serialize_future(
-                parse_body::<ResetRequest>(req.body())
+                parse_body::<VerifyRequest>(req.body())
                     .map_err(|e| {
                         FailureError::from(
-                            e.context("Parsing body // POST /email_verify in ResetRequest failed!")
+                            e.context("Parsing body // POST /email_verify in VerifyRequest failed!")
                                 .context(Error::Parse),
                         )
                     }).and_then(move |profile| {

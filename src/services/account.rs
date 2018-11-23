@@ -22,7 +22,7 @@ pub trait AccountService {
     fn create(self, input: SagaCreateProfile) -> ServiceFuture<Box<AccountService>, User>;
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String>;
-    fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
+    fn request_email_verification(self, input: VerifyRequest) -> ServiceFuture<Box<AccountService>, ()>;
     fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String>;
 }
 
@@ -268,7 +268,7 @@ impl AccountServiceImpl {
             }
         };
 
-        let reset = ResetRequest {
+        let verify = VerifyRequest {
             email: user.email.clone(),
             device: device,
             project: project,
@@ -277,7 +277,7 @@ impl AccountServiceImpl {
         let notifications_microservice = self.notifications_microservice.clone();
         let res = self
             .users_microservice
-            .create_email_verify_token(Some(user_id.into()), reset)
+            .create_email_verify_token(Some(user_id.into()), verify)
             .and_then(move |token| {
                 let user = EmailUser {
                     email: user.email.clone(),
@@ -533,7 +533,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(res)
     }
 
-    fn request_email_verification(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()> {
+    fn request_email_verification(self, input: VerifyRequest) -> ServiceFuture<Box<AccountService>, ()> {
         let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
         let verify_email_path = match project_ {
             Project::MarketPlace => {
