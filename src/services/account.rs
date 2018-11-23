@@ -289,7 +289,7 @@ impl AccountServiceImpl {
                     verify_email_path,
                     token,
                 };
-                notifications_microservice.email_verification(Some(Initiator::Superadmin), email)
+                notifications_microservice.email_verification(Some(Initiator::Superadmin), email, project_)
             }).then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
@@ -479,7 +479,7 @@ impl AccountService for AccountServiceImpl {
                                     reset_password_path,
                                     token,
                                 };
-                                notifications_microservice.password_reset(Some(Initiator::Superadmin), email)
+                                notifications_microservice.password_reset(Some(Initiator::Superadmin), email, project_)
                             }),
                     )
                 } else {
@@ -498,6 +498,7 @@ impl AccountService for AccountServiceImpl {
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String> {
         let cluster_url = self.config.cluster.url.clone();
 
+        let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
         let users_microservice = self.users_microservice.clone();
         let notifications_microservice = self.notifications_microservice.clone();
         let res = self
@@ -517,7 +518,7 @@ impl AccountService for AccountServiceImpl {
                     let email = ApplyPasswordResetForUser { user, cluster_url };
                     Box::new(
                         notifications_microservice
-                            .apply_password_reset(Some(Initiator::Superadmin), email)
+                            .apply_password_reset(Some(Initiator::Superadmin), email, project_)
                             .map(|_| token),
                     )
                 } else {
@@ -586,7 +587,7 @@ impl AccountService for AccountServiceImpl {
                                     verify_email_path,
                                     token,
                                 };
-                                notifications_microservice.email_verification(Some(Initiator::Superadmin), email)
+                                notifications_microservice.email_verification(Some(Initiator::Superadmin), email, project_)
                             }),
                     )
                 } else {
@@ -604,6 +605,7 @@ impl AccountService for AccountServiceImpl {
 
     fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
         let notifications_microservice = self.notifications_microservice.clone();
+        let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
         Box::new(
             self.users_microservice
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
@@ -619,7 +621,7 @@ impl AccountService for AccountServiceImpl {
 
                         Box::new(
                             notifications_microservice
-                                .apply_email_verification(Some(Initiator::Superadmin), email)
+                                .apply_email_verification(Some(Initiator::Superadmin), email, project_)
                                 .map(|_| token),
                         )
                     }
