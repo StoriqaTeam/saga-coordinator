@@ -8,7 +8,7 @@ use stq_routes::service::Service as StqService;
 use stq_static_resources::{
     ApplyEmailVerificationForUser, ApplyPasswordResetForUser, BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser,
     EmailVerificationForUser, OrderCreateForStore, OrderCreateForUser, OrderUpdateStateForStore, OrderUpdateStateForUser,
-    PasswordResetForUser, StoreModerationStatusForModerator, StoreModerationStatusForUser,
+    PasswordResetForUser, Project, StoreModerationStatusForModerator, StoreModerationStatusForUser,
 };
 
 use super::{ApiFuture, Initiator};
@@ -16,10 +16,15 @@ use config;
 use errors::Error;
 
 pub trait NotificationsMicroservice {
-    fn apply_email_verification(&self, initiator: Option<Initiator>, payload: ApplyEmailVerificationForUser) -> ApiFuture<()>;
-    fn apply_password_reset(&self, initiator: Option<Initiator>, payload: ApplyPasswordResetForUser) -> ApiFuture<()>;
-    fn password_reset(&self, initiator: Option<Initiator>, payload: PasswordResetForUser) -> ApiFuture<()>;
-    fn email_verification(&self, initiator: Option<Initiator>, payload: EmailVerificationForUser) -> ApiFuture<()>;
+    fn apply_email_verification(
+        &self,
+        initiator: Option<Initiator>,
+        payload: ApplyEmailVerificationForUser,
+        project: Project,
+    ) -> ApiFuture<()>;
+    fn apply_password_reset(&self, initiator: Option<Initiator>, payload: ApplyPasswordResetForUser, project: Project) -> ApiFuture<()>;
+    fn password_reset(&self, initiator: Option<Initiator>, payload: PasswordResetForUser, project: Project) -> ApiFuture<()>;
+    fn email_verification(&self, initiator: Option<Initiator>, payload: EmailVerificationForUser, project: Project) -> ApiFuture<()>;
     fn order_create_for_user(&self, initiator: Initiator, payload: OrderCreateForUser) -> ApiFuture<()>;
     fn order_create_for_store(&self, initiator: Initiator, payload: OrderCreateForStore) -> ApiFuture<()>;
     fn order_update_state_for_user(&self, initiator: Initiator, payload: OrderUpdateStateForUser) -> ApiFuture<()>;
@@ -40,8 +45,18 @@ pub struct NotificationsMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for NotificationsMicroserviceImpl<T> {
-    fn apply_email_verification(&self, initiator: Option<Initiator>, payload: ApplyEmailVerificationForUser) -> ApiFuture<()> {
-        let url = format!("{}/{}/apply-email-verification", self.notifications_url(), StqModel::User.to_url());
+    fn apply_email_verification(
+        &self,
+        initiator: Option<Initiator>,
+        payload: ApplyEmailVerificationForUser,
+        project: Project,
+    ) -> ApiFuture<()> {
+        let url = format!(
+            "{}/{}/apply-email-verification?project={}",
+            self.notifications_url(),
+            StqModel::User.to_url(),
+            project
+        );
         Box::new(
             super::request(
                 self.http_client.clone(),
@@ -53,8 +68,13 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
         )
     }
 
-    fn apply_password_reset(&self, initiator: Option<Initiator>, payload: ApplyPasswordResetForUser) -> ApiFuture<()> {
-        let url = format!("{}/{}/apply-password-reset", self.notifications_url(), StqModel::User.to_url());
+    fn apply_password_reset(&self, initiator: Option<Initiator>, payload: ApplyPasswordResetForUser, project: Project) -> ApiFuture<()> {
+        let url = format!(
+            "{}/{}/apply-password-reset?project={}",
+            self.notifications_url(),
+            StqModel::User.to_url(),
+            project
+        );
         Box::new(
             super::request(
                 self.http_client.clone(),
@@ -66,8 +86,13 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
         )
     }
 
-    fn password_reset(&self, initiator: Option<Initiator>, payload: PasswordResetForUser) -> ApiFuture<()> {
-        let url = format!("{}/{}/password-reset", self.notifications_url(), StqModel::User.to_url());
+    fn password_reset(&self, initiator: Option<Initiator>, payload: PasswordResetForUser, project: Project) -> ApiFuture<()> {
+        let url = format!(
+            "{}/{}/password-reset?project={}",
+            self.notifications_url(),
+            StqModel::User.to_url(),
+            project
+        );
         Box::new(
             super::request(
                 self.http_client.clone(),
@@ -79,8 +104,13 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
         )
     }
 
-    fn email_verification(&self, initiator: Option<Initiator>, payload: EmailVerificationForUser) -> ApiFuture<()> {
-        let url = format!("{}/{}/email-verification", self.notifications_url(), StqModel::User.to_url(),);
+    fn email_verification(&self, initiator: Option<Initiator>, payload: EmailVerificationForUser, project: Project) -> ApiFuture<()> {
+        let url = format!(
+            "{}/{}/email-verification?project={}",
+            self.notifications_url(),
+            StqModel::User.to_url(),
+            project
+        );
         Box::new(
             super::request(
                 self.http_client.clone(),

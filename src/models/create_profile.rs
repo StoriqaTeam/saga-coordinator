@@ -95,6 +95,7 @@ pub struct ResetRequest {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EmailVerifyApply {
     pub token: String,
+    pub project: Option<Project>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -113,6 +114,7 @@ pub struct ResetApplyToken {
 pub struct PasswordResetApply {
     pub token: String,
     pub password: String,
+    pub project: Option<Project>,
 }
 
 pub type CreateProfileOperationLog = Vec<CreateProfileOperationStage>;
