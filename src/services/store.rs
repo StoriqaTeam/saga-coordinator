@@ -3,13 +3,18 @@ use std::sync::{Arc, Mutex};
 use failure::Error as FailureError;
 use failure::Fail;
 use futures;
-use futures::future;
+use futures::future::{self, Either};
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
 use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+
+use stq_static_resources::{
+    BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser, EmailUser, StoreModerationStatusForModerator,
+    StoreModerationStatusForUser,
+};
 
 use super::parse_validation_errors;
 use config;
@@ -34,9 +39,11 @@ pub trait StoreService {
 pub struct StoreServiceImpl {
     pub orders_microservice: Arc<OrdersMicroservice>,
     pub stores_microservice: Arc<StoresMicroservice>,
+    pub notifications_microservice: Arc<NotificationsMicroservice>,
     pub billing_microservice: Arc<BillingMicroservice>,
     pub warehouses_microservice: Arc<WarehousesMicroservice>,
     pub delivery_microservice: Arc<DeliveryMicroservice>,
+    pub users_microservice: Arc<UsersMicroservice>,
     pub config: config::Config,
     pub log: Arc<Mutex<CreateStoreOperationLog>>,
 }
@@ -46,8 +53,10 @@ impl StoreServiceImpl {
         config: config::Config,
         orders_microservice: Arc<OrdersMicroservice>,
         stores_microservice: Arc<StoresMicroservice>,
+        notifications_microservice: Arc<NotificationsMicroservice>,
         billing_microservice: Arc<BillingMicroservice>,
         warehouses_microservice: Arc<WarehousesMicroservice>,
+        users_microservice: Arc<UsersMicroservice>,
         delivery_microservice: Arc<DeliveryMicroservice>,
     ) -> Self {
         let log = Arc::new(Mutex::new(CreateStoreOperationLog::new()));
@@ -56,8 +65,10 @@ impl StoreServiceImpl {
             log,
             orders_microservice,
             stores_microservice,
+            notifications_microservice,
             billing_microservice,
             warehouses_microservice,
+            users_microservice,
             delivery_microservice,
         }
     }
@@ -354,12 +365,12 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Self, ()> {
+    fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Self, BaseProduct> {
         let res = self
             .stores_microservice
             .set_moderation_status_base_product(payload)
             .then(|res| match res {
-                Ok(_) => Ok((self, ())),
+                Ok(base) => Ok((self, base)),
                 Err(_) => Err((
                     self,
                     format_err!("Store service set_moderation_status_base_product error occurred."),
@@ -369,16 +380,217 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Self, ()> {
+    fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Self, BaseProduct> {
         let res = self
             .stores_microservice
             .send_to_moderation_base_product(base_product_id)
             .then(|res| match res {
-                Ok(_) => Ok((self, ())),
+                Ok(base) => Ok((self, base)),
                 Err(_) => Err((self, format_err!("Store service send_to_moderation_base_product error occurred."))),
             });
 
         Box::new(res)
+    }
+
+    fn notify_moderators_base_product_update_moderation_status(
+        self,
+        store_id: StoreId,
+        base_product_id: BaseProductId,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        info!("get moderators from stores microservice");
+
+        let stores_microservice = self.stores_microservice.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+        let cluster_url = self.config.cluster.url.clone();
+
+        stores_microservice
+            .get_moderators(Initiator::Superadmin)
+            .map_err(FailureError::from)
+            .and_then(move |results| {
+                let fut = iter_ok::<_, FailureError>(results).for_each(move |moderator_id| {
+                    let notif = notifications_microservice.clone();
+                    let cluster_url = cluster_url.clone();
+
+                    Box::new(
+                        users_microservice
+                            .clone()
+                            .get(Some(Initiator::Superadmin), moderator_id)
+                            .and_then(move |moderator| {
+                                if let Some(user) = moderator {
+                                    let email_user = EmailUser {
+                                        email: user.email.clone(),
+                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                                    };
+                                    let email = BaseProductModerationStatusForModerator {
+                                        user: email_user,
+                                        store_id: store_id.to_string(),
+                                        base_product_id: base_product_id.to_string(),
+                                        cluster_url,
+                                    };
+                                    Either::A(
+                                        notif
+                                            .base_product_moderation_status_for_moderator(Initiator::Superadmin, email)
+                                            .then(|_| Ok(())),
+                                    )
+                                } else {
+                                    Either::B(future::ok(()))
+                                }
+                            }),
+                    ) as Box<Future<Item = (), Error = FailureError>>
+                });
+
+                fut
+            }).then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(e) => Err((self, e)),
+            })
+    }
+
+    fn notify_manager_store_update_moderation_status(
+        self,
+        store_id: StoreId,
+        store_manager_id: UserId,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+
+        let fut = Box::new(
+            users_microservice
+                .get(Some(Initiator::Superadmin), store_manager_id)
+                .and_then(move |store_manager| {
+                    if let Some(user) = store_manager {
+                        let email = StoreModerationStatusForUser {
+                            store_email: user.email.to_string(),
+                            store_id: store_id.to_string(),
+                            cluster_url,
+                        };
+
+                        Either::A(
+                            notifications_microservice
+                                .store_moderation_status_for_user(Initiator::Superadmin, email)
+                                .then(|_| Ok(())),
+                        )
+                    } else {
+                        Either::B(future::ok(()))
+                    }
+                }),
+        ) as Box<Future<Item = (), Error = FailureError>>;
+
+        fut.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(e) => Err((self, e)),
+        })
+    }
+
+    fn notify_manager_base_product_update_moderation_status(
+        self,
+        store_id: StoreId,
+        base_product_id: BaseProductId,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let cluster_url = self.config.cluster.url.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+        let stores_microservice = self.stores_microservice.clone();
+
+        let fut = Box::new(
+            stores_microservice
+                .get(store_id)
+                .and_then(move |store| {
+                    store
+                        .ok_or_else(|| {
+                            error!(
+                                "Sending notification to store can not be done. Store with id: {} is not found.",
+                                store_id
+                            );
+                            format_err!("Store is not found in stores microservice.")
+                                .context(Error::NotFound)
+                                .into()
+                        }).into_future()
+                }).and_then(move |store| {
+                    users_microservice
+                        .get(Some(Initiator::Superadmin), store.user_id)
+                        .and_then(move |store_manager| {
+                            if let Some(user) = store_manager {
+                                let email = BaseProductModerationStatusForUser {
+                                    store_email: user.email.to_string(),
+                                    store_id: store_id.to_string(),
+                                    base_product_id: base_product_id.to_string(),
+                                    cluster_url,
+                                };
+
+                                Either::A(
+                                    notifications_microservice
+                                        .base_product_moderation_status_for_user(Initiator::Superadmin, email)
+                                        .then(|_| Ok(())),
+                                )
+                            } else {
+                                Either::B(future::ok(()))
+                            }
+                        })
+                }),
+        ) as Box<Future<Item = (), Error = FailureError>>;
+
+        fut.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(e) => Err((self, e)),
+        })
+    }
+
+    fn notify_moderators_store_update_moderation_status(
+        self,
+        store_id: StoreId,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        info!("get moderators from stores microservice");
+
+        let stores_microservice = self.stores_microservice.clone();
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+        let cluster_url = self.config.cluster.url.clone();
+
+        stores_microservice
+            .get_moderators(Initiator::Superadmin)
+            .map_err(FailureError::from)
+            .and_then(move |results| {
+                let fut = iter_ok::<_, FailureError>(results).for_each(move |moderator_id| {
+                    let notif = notifications_microservice.clone();
+                    let cluster_url = cluster_url.clone();
+
+                    Box::new(
+                        users_microservice
+                            .clone()
+                            .get(Some(Initiator::Superadmin), moderator_id)
+                            .and_then(move |moderator| {
+                                if let Some(user) = moderator {
+                                    let email_user = EmailUser {
+                                        email: user.email.clone(),
+                                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                                    };
+                                    let email = StoreModerationStatusForModerator {
+                                        user: email_user,
+                                        store_id: store_id.to_string(),
+                                        cluster_url,
+                                    };
+                                    Either::A(
+                                        notif
+                                            .store_moderation_status_for_moderator(Initiator::Superadmin, email)
+                                            .then(|_| Ok(())),
+                                    )
+                                } else {
+                                    Either::B(future::ok(()))
+                                }
+                            }),
+                    ) as Box<Future<Item = (), Error = FailureError>>
+                });
+
+                fut
+            }).then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(e) => Err((self, e)),
+            })
     }
 }
 
@@ -419,7 +631,10 @@ impl StoreService for StoreServiceImpl {
     fn set_store_moderation_status(self, payload: StoreModerate) -> ServiceFuture<Box<StoreService>, Store> {
         Box::new(
             self.set_store_moderation_status(payload)
-                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                .and_then(|(s, store)| {
+                    s.notify_manager_store_update_moderation_status(store.id, store.user_id)
+                        .map(|(s, _)| (s, store))
+                }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -428,7 +643,10 @@ impl StoreService for StoreServiceImpl {
     fn send_to_moderation(self, store_id: StoreId) -> ServiceFuture<Box<StoreService>, Store> {
         Box::new(
             self.send_to_moderation(store_id)
-                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                .and_then(|(s, store)| {
+                    s.notify_moderators_store_update_moderation_status(store.id)
+                        .map(|(s, _)| (s, store))
+                }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -437,7 +655,10 @@ impl StoreService for StoreServiceImpl {
     fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Box<StoreService>, ()> {
         Box::new(
             self.set_moderation_status_base_product(payload)
-                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                .and_then(|(s, base)| {
+                    s.notify_manager_base_product_update_moderation_status(base.store_id, base.id)
+                        .map(|(s, _)| (s, ()))
+                }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -445,7 +666,10 @@ impl StoreService for StoreServiceImpl {
     fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Box<StoreService>, ()> {
         Box::new(
             self.send_to_moderation_base_product(base_product_id)
-                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                .and_then(|(s, base)| {
+                    s.notify_moderators_base_product_update_moderation_status(base.store_id, base.id)
+                        .map(|(s, _)| (s, ()))
+                }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }

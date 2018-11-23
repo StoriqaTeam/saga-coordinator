@@ -6,8 +6,9 @@ use stq_http::client::HttpClient;
 use stq_routes::model::Model as StqModel;
 use stq_routes::service::Service as StqService;
 use stq_static_resources::{
-    ApplyEmailVerificationForUser, ApplyPasswordResetForUser, EmailVerificationForUser, OrderCreateForStore, OrderCreateForUser,
-    OrderUpdateStateForStore, OrderUpdateStateForUser, PasswordResetForUser, Project,
+    ApplyEmailVerificationForUser, ApplyPasswordResetForUser, BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser,
+    EmailVerificationForUser, OrderCreateForStore, OrderCreateForUser, OrderUpdateStateForStore, OrderUpdateStateForUser,
+    PasswordResetForUser, Project, StoreModerationStatusForModerator, StoreModerationStatusForUser,
 };
 
 use super::{ApiFuture, Initiator};
@@ -28,6 +29,14 @@ pub trait NotificationsMicroservice {
     fn order_create_for_store(&self, initiator: Initiator, payload: OrderCreateForStore) -> ApiFuture<()>;
     fn order_update_state_for_user(&self, initiator: Initiator, payload: OrderUpdateStateForUser) -> ApiFuture<()>;
     fn order_update_state_for_store(&self, initiator: Initiator, payload: OrderUpdateStateForStore) -> ApiFuture<()>;
+    fn store_moderation_status_for_user(&self, initiator: Initiator, payload: StoreModerationStatusForUser) -> ApiFuture<()>;
+    fn base_product_moderation_status_for_user(&self, initiator: Initiator, payload: BaseProductModerationStatusForUser) -> ApiFuture<()>;
+    fn store_moderation_status_for_moderator(&self, initiator: Initiator, payload: StoreModerationStatusForModerator) -> ApiFuture<()>;
+    fn base_product_moderation_status_for_moderator(
+        &self,
+        initiator: Initiator,
+        payload: BaseProductModerationStatusForModerator,
+    ) -> ApiFuture<()>;
 }
 
 pub struct NotificationsMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -177,6 +186,77 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                         .context(Error::HttpClient)
                         .into()
                 }),
+        )
+    }
+
+    fn store_moderation_status_for_user(&self, initiator: Initiator, payload: StoreModerationStatusForUser) -> ApiFuture<()> {
+        let url = format!("{}/users/stores/update-moderation-status", self.notifications_url());
+        Box::new(
+            super::request::<_, StoreModerationStatusForUser, ()>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                Some(initiator.into()),
+            ).map_err(|e| {
+                e.context("Sending change store moderation status for user in notifications microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn base_product_moderation_status_for_user(&self, initiator: Initiator, payload: BaseProductModerationStatusForUser) -> ApiFuture<()> {
+        let url = format!("{}/users/base_products/update-moderation-status", self.notifications_url());
+        Box::new(
+            super::request::<_, BaseProductModerationStatusForUser, ()>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                Some(initiator.into()),
+            ).map_err(|e| {
+                e.context("Sending change base product moderation status for user in notifications microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn store_moderation_status_for_moderator(&self, initiator: Initiator, payload: StoreModerationStatusForModerator) -> ApiFuture<()> {
+        let url = format!("{}/moderators/stores/update-moderation-status", self.notifications_url());
+        Box::new(
+            super::request::<_, StoreModerationStatusForModerator, ()>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                Some(initiator.into()),
+            ).map_err(|e| {
+                e.context("Sending change store moderation status for moderator in notifications microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+    fn base_product_moderation_status_for_moderator(
+        &self,
+        initiator: Initiator,
+        payload: BaseProductModerationStatusForModerator,
+    ) -> ApiFuture<()> {
+        let url = format!("{}/moderators/base_products/update-moderation-status", self.notifications_url());
+        Box::new(
+            super::request::<_, BaseProductModerationStatusForModerator, ()>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                Some(initiator.into()),
+            ).map_err(|e| {
+                e.context("Sending change base product moderation status for moderator in notifications microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 }
