@@ -25,6 +25,7 @@ pub trait StoresMicroservice {
     fn send_to_moderation(&self, store_id: StoreId) -> ApiFuture<Store>;
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
     fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
+    fn get_moderators(&self, initiator: Initiator) -> ApiFuture<Vec<UserId>>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -140,7 +141,6 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
 
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct> {
         let url = format!("{}/{}/moderate", self.stores_url(), StqModel::BaseProduct.to_url());
-        let http_client = self.http_client.clone();
 
         Box::new(
             super::request::<_, BaseProductModerate, BaseProduct>(self.http_client.clone(), Method::Post, url, Some(payload), None)
@@ -165,6 +165,23 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
             super::request::<_, (), BaseProduct>(self.http_client.clone(), Method::Post, url, None, None).map_err(|e| {
                 parse_validation_errors(e.into(), &["base_product"])
                     .context("Send base_product to moderation in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn get_moderators(&self, initiator: Initiator) -> ApiFuture<Vec<UserId>> {
+        let url = format!(
+            "{}/{}/by-role/{}",
+            self.stores_url(),
+            StqModel::Role.to_url(),
+            StoresRole::Moderator
+        );
+
+        Box::new(
+            super::request::<_, (), Vec<UserId>>(self.http_client.clone(), Method::Get, url, None, Some(initiator.into())).map_err(|e| {
+                e.context("Get moderators in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),
