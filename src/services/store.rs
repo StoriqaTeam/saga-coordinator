@@ -497,7 +497,7 @@ impl StoreServiceImpl {
 
         let fut = Box::new(
             stores_microservice
-                .get(store_id)
+                .get(store_id, Visibility::Active)
                 .and_then(move |store| {
                     store
                         .ok_or_else(|| {
