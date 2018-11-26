@@ -92,6 +92,7 @@ impl OrderServiceImpl {
                 receiver_email: convert_cart.convert_cart.receiver_email,
                 coupons: convert_cart.convert_cart.coupons,
                 delivery_info: convert_cart.convert_cart.delivery_info,
+                uuid: convert_cart.convert_cart.uuid,
             }).and_then(move |res| {
                 log.lock()
                     .unwrap()
