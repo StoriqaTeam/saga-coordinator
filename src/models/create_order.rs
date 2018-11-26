@@ -197,6 +197,7 @@ pub struct ConvertCartPayload {
     pub seller_prices: HashMap<ProductId, ProductSellerPrice>,
     pub coupons: HashMap<CouponId, CouponInfo>,
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
+    pub uuid: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
