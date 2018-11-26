@@ -217,7 +217,7 @@ impl OrderServiceImpl {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
         self.stores_microservice
-            .get(store_id)
+            .get(store_id, Visibility::Active)
             .and_then(move |store| {
                 store
                     .ok_or_else(|| {
@@ -289,7 +289,7 @@ impl OrderServiceImpl {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
         self.stores_microservice
-            .get(store_id)
+            .get(store_id, Visibility::Active)
             .and_then(move |store| {
                 store
                     .ok_or_else(|| {

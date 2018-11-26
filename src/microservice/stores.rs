@@ -20,7 +20,7 @@ pub trait StoresMicroservice {
     fn delete_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store>;
     fn create_store(&self, initiator: Option<Initiator>, payload: NewStore) -> ApiFuture<Store>;
     fn use_coupon(&self, initiator: Initiator, coupon: CouponId, user: UserId) -> ApiFuture<UsedCoupon>;
-    fn get(&self, store: StoreId) -> ApiFuture<Option<Store>>;
+    fn get(&self, store: StoreId, visibility: Visibility) -> ApiFuture<Option<Store>>;
     fn set_store_moderation_status(&self, payload: StoreModerate) -> ApiFuture<Store>;
     fn send_to_moderation(&self, store_id: StoreId) -> ApiFuture<Store>;
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
@@ -91,8 +91,14 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
             }),
         )
     }
-    fn get(&self, store: StoreId) -> ApiFuture<Option<Store>> {
-        let url = format!("{}/{}/{}", self.stores_url(), StqModel::Store.to_url(), store);
+    fn get(&self, store: StoreId, visibility: Visibility) -> ApiFuture<Option<Store>> {
+        let url = format!(
+            "{}/{}/{}?visibility={}",
+            self.stores_url(),
+            StqModel::Store.to_url(),
+            store,
+            visibility
+        );
         Box::new(
             super::request::<_, (), Option<Store>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
                 e.context("Getting store in stores microservice failed.")
