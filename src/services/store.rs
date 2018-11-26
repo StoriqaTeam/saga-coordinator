@@ -12,8 +12,8 @@ use hyper::Headers;
 use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
 
 use stq_static_resources::{
-    BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser, EmailUser, StoreModerationStatusForModerator,
-    StoreModerationStatusForUser,
+    BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser, EmailUser, ModerationStatus,
+    StoreModerationStatusForModerator, StoreModerationStatusForUser,
 };
 
 use super::parse_validation_errors;
@@ -396,6 +396,7 @@ impl StoreServiceImpl {
         self,
         store_id: StoreId,
         base_product_id: BaseProductId,
+        status: ModerationStatus,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         info!("get moderators from stores microservice");
 
@@ -428,6 +429,7 @@ impl StoreServiceImpl {
                                         store_id: store_id.to_string(),
                                         base_product_id: base_product_id.to_string(),
                                         cluster_url,
+                                        status,
                                     };
                                     Either::A(
                                         notif
@@ -452,6 +454,7 @@ impl StoreServiceImpl {
         self,
         store_id: StoreId,
         store_manager_id: UserId,
+        status: ModerationStatus,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
@@ -466,6 +469,7 @@ impl StoreServiceImpl {
                             store_email: user.email.to_string(),
                             store_id: store_id.to_string(),
                             cluster_url,
+                            status,
                         };
 
                         Either::A(
@@ -489,6 +493,7 @@ impl StoreServiceImpl {
         self,
         store_id: StoreId,
         base_product_id: BaseProductId,
+        status: ModerationStatus,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let cluster_url = self.config.cluster.url.clone();
         let notifications_microservice = self.notifications_microservice.clone();
@@ -519,6 +524,7 @@ impl StoreServiceImpl {
                                     store_id: store_id.to_string(),
                                     base_product_id: base_product_id.to_string(),
                                     cluster_url,
+                                    status,
                                 };
 
                                 Either::A(
@@ -542,6 +548,7 @@ impl StoreServiceImpl {
     fn notify_moderators_store_update_moderation_status(
         self,
         store_id: StoreId,
+        status: ModerationStatus,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         info!("get moderators from stores microservice");
 
@@ -573,6 +580,7 @@ impl StoreServiceImpl {
                                         user: email_user,
                                         store_id: store_id.to_string(),
                                         cluster_url,
+                                        status,
                                     };
                                     Either::A(
                                         notif
@@ -632,7 +640,7 @@ impl StoreService for StoreServiceImpl {
         Box::new(
             self.set_store_moderation_status(payload)
                 .and_then(|(s, store)| {
-                    s.notify_manager_store_update_moderation_status(store.id, store.user_id)
+                    s.notify_manager_store_update_moderation_status(store.id, store.user_id, store.status)
                         .map(|(s, _)| (s, store))
                 }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
@@ -644,7 +652,7 @@ impl StoreService for StoreServiceImpl {
         Box::new(
             self.send_to_moderation(store_id)
                 .and_then(|(s, store)| {
-                    s.notify_moderators_store_update_moderation_status(store.id)
+                    s.notify_moderators_store_update_moderation_status(store.id, store.status)
                         .map(|(s, _)| (s, store))
                 }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
@@ -656,7 +664,7 @@ impl StoreService for StoreServiceImpl {
         Box::new(
             self.set_moderation_status_base_product(payload)
                 .and_then(|(s, base)| {
-                    s.notify_manager_base_product_update_moderation_status(base.store_id, base.id)
+                    s.notify_manager_base_product_update_moderation_status(base.store_id, base.id, base.status)
                         .map(|(s, _)| (s, ()))
                 }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
@@ -667,7 +675,7 @@ impl StoreService for StoreServiceImpl {
         Box::new(
             self.send_to_moderation_base_product(base_product_id)
                 .and_then(|(s, base)| {
-                    s.notify_moderators_base_product_update_moderation_status(base.store_id, base.id)
+                    s.notify_moderators_base_product_update_moderation_status(base.store_id, base.id, base.status)
                         .map(|(s, _)| (s, ()))
                 }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
