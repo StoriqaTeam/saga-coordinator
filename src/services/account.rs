@@ -631,7 +631,12 @@ impl AccountService for AccountServiceImpl {
                     let create_emarsys_payload = CreateEmarsysContactPayload { user_id, email };
                     notifications_microservice_emarsys
                         .emarsys_create_contact(create_emarsys_payload)
-                        .map(|created_contact| created_contact.emarsys_id)
+                        .inspect(|created_contact| {
+                            info!(
+                                "Successfully created new contact {} in emarsys for user {}",
+                                created_contact.emarsys_id, created_contact.user_id
+                            );
+                        }).map(|created_contact| created_contact.emarsys_id)
                         .and_then(move |emarsys_id| {
                             users_microservice.update_user(
                                 Some(Initiator::Superadmin),
@@ -641,6 +646,8 @@ impl AccountService for AccountServiceImpl {
                                     ..Default::default()
                                 },
                             )
+                        }).inspect(|user| {
+                            info!("Successfully changed emarsys_id for user {}", user.id);
                         }).then(|res| {
                             if let Err(error) = res {
                                 error!("Failed to create new contact in emarsys: {:?}", error);
