@@ -25,6 +25,7 @@ pub trait UsersMicroservice {
     fn create_role(&self, initiator: Option<Initiator>, payload: NewRole<UsersRole>) -> ApiFuture<NewRole<UsersRole>>;
     fn create_user(&self, initiator: Option<Initiator>, payload: SagaCreateProfile) -> ApiFuture<User>;
     fn get(&self, initiator: Option<Initiator>, user_id: UserId) -> ApiFuture<Option<User>>;
+    fn update_user(&self, initiator: Option<Initiator>, user_id: UserId, payload: UpdateUser) -> ApiFuture<User>;
 }
 
 pub struct UsersMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -171,6 +172,17 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
                         .into()
                 },
             ),
+        )
+    }
+
+    fn update_user(&self, initiator: Option<Initiator>, user_id: UserId, payload: UpdateUser) -> ApiFuture<User> {
+        let url = format!("{}/{}/{}", self.users_url(), StqModel::User.to_url(), user_id);
+        Box::new(
+            super::request(self.http_client.clone(), Method::Put, url, Some(payload), initiator.map(Into::into)).map_err(|e| {
+                e.context("Updating user in users microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 }
