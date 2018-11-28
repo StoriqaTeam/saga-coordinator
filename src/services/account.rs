@@ -298,6 +298,40 @@ impl AccountServiceImpl {
         Box::new(res)
     }
 
+    // Create new user in emarsys and update user with emarsys_id
+    fn create_emarsys_contact(self, create_emarsys_payload: CreateEmarsysContactPayload) -> ServiceFuture<Self, ()> {
+        let user_id = create_emarsys_payload.user_id;
+        let notifications_microservice = self.notifications_microservice.clone();
+        let users_microservice = self.users_microservice.clone();
+        let res = notifications_microservice
+            .emarsys_create_contact(create_emarsys_payload)
+            .inspect(|created_contact| {
+                info!(
+                    "Successfully created new contact {} in emarsys for user {}",
+                    created_contact.emarsys_id, created_contact.user_id
+                );
+            }).map(|created_contact| created_contact.emarsys_id)
+            .and_then(move |emarsys_id| {
+                users_microservice.update_user(
+                    Some(Initiator::Superadmin),
+                    user_id,
+                    UpdateUser {
+                        emarsys_id: Some(emarsys_id),
+                        ..Default::default()
+                    },
+                )
+            }).inspect(|user| {
+                info!("Successfully changed emarsys emarsys_id for user {}", user.id);
+            }).then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(error) => {
+                    error!("Failed to create new contact in emarsys: {:?}", error);
+                    Err((self, error))
+                }
+            });
+        Box::new(res)
+    }
+
     // Contains happy path for account creation
     fn create_happy(self, input: SagaCreateProfile) -> ServiceFuture<Self, User> {
         let saga_id = SagaId::new();
@@ -313,14 +347,24 @@ impl AccountServiceImpl {
                 .and_then(|(s, user)| s.create_delivery_role(user.id).map(|(s, _)| (s, user)))
                 .and_then(|(s, user)| s.create_merchant(user.id).map(|(s, _)| (s, user)))
                 .and_then(move |(s, user)| {
-                    if provider == Provider::Email {
-                        // only if provider is email it needs to ber verified
-                        Box::new(s.notify_user(user.clone(), device, project).then(|res| match res {
+                    // only if provider is email it needs to be verified
+                    match provider {
+                        Provider::Email => Box::new(s.notify_user(user.clone(), device, project).then(|res| match res {
                             Ok((s, _)) => Ok((s, user)),
                             Err((s, _)) => Ok((s, user)),
-                        })) as ServiceFuture<Self, User>
-                    } else {
-                        Box::new(future::ok((s, user))) as ServiceFuture<Self, User>
+                        })) as ServiceFuture<Self, User>,
+                        Provider::Facebook | Provider::Google if project.unwrap_or(Project::MarketPlace) == Project::MarketPlace => {
+                            Box::new(
+                                s.create_emarsys_contact(CreateEmarsysContactPayload {
+                                    user_id: user.id,
+                                    email: user.email.clone(),
+                                }).then(|res| match res {
+                                    Ok((s, _)) => Ok((s, user)),
+                                    Err((s, _)) => Ok((s, user)),
+                                }),
+                            ) as ServiceFuture<Self, User>
+                        }
+                        _ => Box::new(future::ok((s, user))) as ServiceFuture<Self, User>,
                     }
                 }),
         )
@@ -605,58 +649,38 @@ impl AccountService for AccountServiceImpl {
 
     fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
         let notifications_microservice = self.notifications_microservice.clone();
-        let notifications_microservice_emarsys = self.notifications_microservice.clone();
         let users_microservice = self.users_microservice.clone();
         let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
         Box::new(
-            self.users_microservice
+            users_microservice
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
-                .and_then({
-                    move |email_apply_token| {
-                        let EmailVerifyApplyToken { user, token } = email_apply_token;
-                        let user_id = user.id;
-                        let user_email = user.email.clone();
-                        let email_user = EmailUser {
-                            email: user.email.clone(),
-                            first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                            last_name: user.last_name.unwrap_or_else(|| "".to_string()),
-                        };
-                        let email = ApplyEmailVerificationForUser { user: email_user };
+                .and_then(move |email_apply_token| {
+                    let EmailVerifyApplyToken { user, token } = email_apply_token;
+                    let user_id = user.id;
+                    let user_email = user.email.clone();
+                    let email_user = EmailUser {
+                        email: user.email.clone(),
+                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                    };
+                    let email = ApplyEmailVerificationForUser { user: email_user };
 
-                        notifications_microservice
-                            .apply_email_verification(Some(Initiator::Superadmin), email, project_)
-                            .map(move |_| (user_id, user_email, token))
-                    }
-                }).and_then(move |(user_id, email, token)| {
-                    let create_emarsys_payload = CreateEmarsysContactPayload { user_id, email };
-                    notifications_microservice_emarsys
-                        .emarsys_create_contact(create_emarsys_payload)
-                        .inspect(|created_contact| {
-                            info!(
-                                "Successfully created new contact {} in emarsys for user {}",
-                                created_contact.emarsys_id, created_contact.user_id
-                            );
-                        }).map(|created_contact| created_contact.emarsys_id)
-                        .and_then(move |emarsys_id| {
-                            users_microservice.update_user(
-                                Some(Initiator::Superadmin),
-                                user_id,
-                                UpdateUser {
-                                    emarsys_id: Some(emarsys_id),
-                                    ..Default::default()
-                                },
-                            )
-                        }).inspect(|user| {
-                            info!("Successfully changed emarsys_id for user {}", user.id);
-                        }).then(|res| {
-                            if let Err(error) = res {
-                                error!("Failed to create new contact in emarsys: {:?}", error);
-                            }
-                            Ok(())
-                        }).map(|_| token)
+                    notifications_microservice
+                        .apply_email_verification(Some(Initiator::Superadmin), email, project_)
+                        .map(move |_| (user_id, user_email, token))
                 }).then(|res| match res {
-                    Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
-                    Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
+                    Ok((user_id, email, token)) => Ok((self, user_id, email, token)),
+                    Err(err) => Err((self, err)),
+                }).and_then(move |(self_service, user_id, email, token)| {
+                    self_service
+                        .create_emarsys_contact(CreateEmarsysContactPayload { user_id, email })
+                        .then(|res| match res {
+                            Ok((self_service, _)) => Ok((self_service, token)),
+                            Err((self_service, _)) => Ok((self_service, token)),
+                        })
+                }).then(|res| match res {
+                    Ok((self_service, token)) => Ok((Box::new(self_service) as Box<AccountService>, token)),
+                    Err((self_service, e)) => Err((Box::new(self_service) as Box<AccountService>, e)),
                 }),
         )
     }
