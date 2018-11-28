@@ -23,7 +23,7 @@ pub trait AccountService {
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String>;
     fn request_email_verification(self, input: VerifyRequest) -> ServiceFuture<Box<AccountService>, ()>;
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String>;
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, EmailVerifyApplyToken>;
 }
 
 /// Account service, responsible for Creating user
@@ -603,7 +603,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(res)
     }
 
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, EmailVerifyApplyToken> {
         let notifications_microservice = self.notifications_microservice.clone();
         let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
         Box::new(
@@ -611,7 +611,8 @@ impl AccountService for AccountServiceImpl {
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
                 .and_then({
                     move |email_apply_token| {
-                        let EmailVerifyApplyToken { user, token } = email_apply_token;
+                        let user = email_apply_token.user.clone();
+
                         let email_user = EmailUser {
                             email: user.email.clone(),
                             first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -622,11 +623,11 @@ impl AccountService for AccountServiceImpl {
                         Box::new(
                             notifications_microservice
                                 .apply_email_verification(Some(Initiator::Superadmin), email, project_)
-                                .map(|_| token),
+                                .map(|_| email_apply_token),
                         )
                     }
                 }).then(|res| match res {
-                    Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
+                    Ok(email_apply_token) => Ok((Box::new(self) as Box<AccountService>, email_apply_token)),
                     Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
                 }),
         )
