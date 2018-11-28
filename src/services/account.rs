@@ -353,7 +353,7 @@ impl AccountServiceImpl {
                             Ok((s, _)) => Ok((s, user)),
                             Err((s, _)) => Ok((s, user)),
                         })) as ServiceFuture<Self, User>,
-                        Provider::Facebook | Provider::Google if project.unwrap_or(Project::MarketPlace) == Project::MarketPlace => {
+                        Provider::Facebook | Provider::Google if project.unwrap_or_default() == Project::MarketPlace => {
                             Box::new(
                                 s.create_emarsys_contact(CreateEmarsysContactPayload {
                                     user_id: user.id,
