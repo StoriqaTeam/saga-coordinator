@@ -141,7 +141,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .create(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during account creation occurred.")))
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmail)) => serialize_future(
@@ -155,7 +155,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_email_verification(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification occurred.")))
                     }),
             ),
             (&Method::Post, Some(Route::VerifyEmailApply)) => serialize_future(
@@ -169,7 +169,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_email_verification_apply(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification apply occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during email verification apply occurred.")))
                     }),
             ),
             (&Method::Post, Some(Route::ResetPassword)) => serialize_future(
@@ -183,7 +183,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_password_reset(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password occurred.")))
                     }),
             ),
             (&Method::Post, Some(Route::ResetPasswordApply)) => serialize_future(
@@ -197,7 +197,7 @@ impl Controller for ControllerImpl {
                         account_service
                             .request_password_reset_apply(profile)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password apply occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during reset password apply occurred.")))
                     }),
             ),
 
@@ -212,7 +212,7 @@ impl Controller for ControllerImpl {
                         store_service
                             .create(store)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during store creation occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during store creation occurred.")))
                     }),
             ),
 
@@ -227,7 +227,7 @@ impl Controller for ControllerImpl {
                         order_service
                             .create(new_order)
                             .map(|(_, user)| user)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation occurred.")))
                     }),
             ),
 
@@ -238,7 +238,7 @@ impl Controller for ControllerImpl {
                         order_service
                             .create_buy_now(new_buy_now)
                             .map(|(_, invoice)| invoice)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation from buy now data occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during order creation from buy now data occurred.")))
                     }),
             ),
 
@@ -253,7 +253,7 @@ impl Controller for ControllerImpl {
                         order_service
                             .update_state_by_billing(orders_info)
                             .map(|(_, _)| ())
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders update by external billing occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders update by external billing occurred.")))
                     }),
             ),
 
@@ -270,7 +270,7 @@ impl Controller for ControllerImpl {
                         order_service
                             .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment)
                             .map(|(_, order)| order)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occurred.")))
                     }),
             ),
 
@@ -282,7 +282,7 @@ impl Controller for ControllerImpl {
                         store_service
                             .set_store_moderation_status(store_moderate)
                             .map(|(_, store)| store)
-                            .map_err(|(_, e)| FailureError::from(e.context("Error during change store status occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during change store status occurred.")))
                     }),
             ),
 
@@ -291,7 +291,7 @@ impl Controller for ControllerImpl {
                 store_service
                     .send_to_moderation(store_id)
                     .map(|(_, store)| store)
-                    .map_err(|(_, e)| FailureError::from(e.context("Error sending store to moderation occured."))),
+                    .map_err(|(_, e)| FailureError::from(e.context("Error sending store to moderation occurred."))),
             ),
 
             // POST /base_products/moderate
@@ -302,7 +302,7 @@ impl Controller for ControllerImpl {
                         store_service
                             .set_moderation_status_base_product(base_product_moderate)
                             .map(|(_, _)| ())
-                            .map_err(|(_, e)| FailureError::from(e.context("Error change base product status occured.")))
+                            .map_err(|(_, e)| FailureError::from(e.context("Error change base product status occurred.")))
                     }),
             ),
 
@@ -311,7 +311,7 @@ impl Controller for ControllerImpl {
                 store_service
                     .send_to_moderation_base_product(base_product_id)
                     .map(|(_, _)| ())
-                    .map_err(|(_, e)| FailureError::from(e.context("Error sending base product to moderation occured."))),
+                    .map_err(|(_, e)| FailureError::from(e.context("Error sending base product to moderation occurred."))),
             ),
 
             // Fallback

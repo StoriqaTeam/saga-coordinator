@@ -23,7 +23,7 @@ pub trait AccountService {
     fn request_password_reset(self, input: ResetRequest) -> ServiceFuture<Box<AccountService>, ()>;
     fn request_password_reset_apply(self, input: PasswordResetApply) -> ServiceFuture<Box<AccountService>, String>;
     fn request_email_verification(self, input: VerifyRequest) -> ServiceFuture<Box<AccountService>, ()>;
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String>;
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, EmailVerifyApplyToken>;
 }
 
 /// Account service, responsible for Creating user
@@ -353,17 +353,16 @@ impl AccountServiceImpl {
                             Ok((s, _)) => Ok((s, user)),
                             Err((s, _)) => Ok((s, user)),
                         })) as ServiceFuture<Self, User>,
-                        Provider::Facebook | Provider::Google if project.unwrap_or_default() == Project::MarketPlace => {
-                            Box::new(
-                                s.create_emarsys_contact(CreateEmarsysContactPayload {
-                                    user_id: user.id,
-                                    email: user.email.clone(),
-                                }).then(|res| match res {
-                                    Ok((s, _)) => Ok((s, user)),
-                                    Err((s, _)) => Ok((s, user)),
-                                }),
-                            ) as ServiceFuture<Self, User>
-                        }
+                        Provider::Facebook | Provider::Google if project.unwrap_or_default() == Project::MarketPlace => Box::new(
+                            s.create_emarsys_contact(CreateEmarsysContactPayload {
+                                user_id: user.id,
+                                email: user.email.clone(),
+                            }).then(|res| match res {
+                                Ok((s, _)) => Ok((s, user)),
+                                Err((s, _)) => Ok((s, user)),
+                            }),
+                        )
+                            as ServiceFuture<Self, User>,
                         _ => Box::new(future::ok((s, user))) as ServiceFuture<Self, User>,
                     }
                 }),
@@ -647,7 +646,7 @@ impl AccountService for AccountServiceImpl {
         Box::new(res)
     }
 
-    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, String> {
+    fn request_email_verification_apply(self, input: EmailVerifyApply) -> ServiceFuture<Box<AccountService>, EmailVerifyApplyToken> {
         let notifications_microservice = self.notifications_microservice.clone();
         let users_microservice = self.users_microservice.clone();
         let project_ = input.project.clone().unwrap_or_else(|| Project::MarketPlace);
@@ -655,7 +654,7 @@ impl AccountService for AccountServiceImpl {
             users_microservice
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
                 .and_then(move |email_apply_token| {
-                    let EmailVerifyApplyToken { user, token } = email_apply_token;
+                    let user = email_apply_token.user.clone();
                     let user_id = user.id;
                     let user_email = user.email.clone();
                     let email_user = EmailUser {
@@ -667,7 +666,7 @@ impl AccountService for AccountServiceImpl {
 
                     notifications_microservice
                         .apply_email_verification(Some(Initiator::Superadmin), email, project_)
-                        .map(move |_| (user_id, user_email, token))
+                        .map(move |_| (user_id, user_email, email_apply_token))
                 }).then(|res| match res {
                     Ok((user_id, email, token)) => Ok((self, user_id, email, token)),
                     Err(err) => Err((self, err)),
