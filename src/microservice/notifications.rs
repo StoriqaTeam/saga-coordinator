@@ -14,6 +14,7 @@ use stq_static_resources::{
 use super::{ApiFuture, Initiator};
 use config;
 use errors::Error;
+use models::{CreateEmarsysContactPayload, CreatedEmarsysContact};
 
 pub trait NotificationsMicroservice {
     fn apply_email_verification(
@@ -37,6 +38,7 @@ pub trait NotificationsMicroservice {
         initiator: Initiator,
         payload: BaseProductModerationStatusForModerator,
     ) -> ApiFuture<()>;
+    fn emarsys_create_contact(&self, payload: CreateEmarsysContactPayload) -> ApiFuture<CreatedEmarsysContact>;
 }
 
 pub struct NotificationsMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -257,6 +259,19 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                     .context(Error::HttpClient)
                     .into()
             }),
+        )
+    }
+
+    fn emarsys_create_contact(&self, payload: CreateEmarsysContactPayload) -> ApiFuture<CreatedEmarsysContact> {
+        let url = format!("{}/emarsys/contact", self.notifications_url());
+        Box::new(
+            super::request::<_, CreateEmarsysContactPayload, CreatedEmarsysContact>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                None,
+            ).map_err(|e| e.context("Creating contact in emarsys failed.").context(Error::HttpClient).into()),
         )
     }
 }

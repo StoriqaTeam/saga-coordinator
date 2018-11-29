@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use uuid::Uuid;
 
 use stq_static_resources::{Device, Gender, Project, Provider};
-use stq_types::{MerchantId, RoleId, SagaId, UserId};
+use stq_types::{EmarsysId, MerchantId, RoleId, SagaId, UserId};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
@@ -38,6 +38,15 @@ pub struct NewUser {
     pub birthdate: Option<NaiveDate>,
     pub last_login_at: SystemTime,
     pub saga_id: SagaId,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct UpdateUser {
+    pub phone: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub middle_name: Option<String>,
+    pub emarsys_id: Option<EmarsysId>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
