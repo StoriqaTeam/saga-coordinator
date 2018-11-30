@@ -357,6 +357,8 @@ impl AccountServiceImpl {
                             s.create_emarsys_contact(CreateEmarsysContactPayload {
                                 user_id: user.id,
                                 email: user.email.clone(),
+                                first_name: user.first_name.clone(),
+                                last_name: user.last_name.clone(),
                             }).then(|res| match res {
                                 Ok((s, _)) => Ok((s, user)),
                                 Err((s, _)) => Ok((s, user)),
@@ -655,25 +657,27 @@ impl AccountService for AccountServiceImpl {
                 .apply_email_verify_token(Some(Initiator::Superadmin), input)
                 .and_then(move |email_apply_token| {
                     let user = email_apply_token.user.clone();
-                    let user_id = user.id;
-                    let user_email = user.email.clone();
                     let email_user = EmailUser {
                         email: user.email.clone(),
-                        first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
-                        last_name: user.last_name.unwrap_or_else(|| "".to_string()),
+                        first_name: user.first_name.clone().unwrap_or_else(|| "user".to_string()),
+                        last_name: user.last_name.clone().unwrap_or_else(|| "".to_string()),
                     };
                     let email = ApplyEmailVerificationForUser { user: email_user };
 
                     notifications_microservice
                         .apply_email_verification(Some(Initiator::Superadmin), email, project_)
-                        .map(move |_| (user_id, user_email, email_apply_token))
+                        .map(move |_| (user, email_apply_token))
                 }).then(|res| match res {
-                    Ok((user_id, email, token)) => Ok((self, user_id, email, token)),
+                    Ok((user, token)) => Ok((self, user, token)),
                     Err(err) => Err((self, err)),
-                }).and_then(move |(self_service, user_id, email, token)| {
+                }).and_then(move |(self_service, user, token)| {
                     self_service
-                        .create_emarsys_contact(CreateEmarsysContactPayload { user_id, email })
-                        .then(|res| match res {
+                        .create_emarsys_contact(CreateEmarsysContactPayload {
+                            user_id: user.id,
+                            email: user.email,
+                            first_name: user.first_name,
+                            last_name: user.last_name,
+                        }).then(|res| match res {
                             Ok((self_service, _)) => Ok((self_service, token)),
                             Err((self_service, _)) => Ok((self_service, token)),
                         })
