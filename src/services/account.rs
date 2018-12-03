@@ -313,7 +313,7 @@ impl AccountServiceImpl {
             }).map(|created_contact| created_contact.emarsys_id)
             .and_then(move |emarsys_id| {
                 users_microservice.update_user(
-                    None,
+                    Some(Initiator::User(user_id)),
                     user_id,
                     UpdateUser {
                         emarsys_id: Some(emarsys_id),
