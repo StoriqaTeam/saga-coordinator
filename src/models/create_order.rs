@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
-use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order};
+use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, ProductInfo, Order};
 use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
@@ -20,6 +20,7 @@ pub struct ConvertCart {
     pub currency: Currency,
     pub coupons: HashMap<CouponId, CouponInfo>,
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
+    pub product_info: HashMap<ProductId, ProductInfo>,
     pub uuid: Uuid,
 }
 
@@ -39,6 +40,7 @@ pub struct BuyNow {
     pub pre_order_days: i32,
     pub coupon: Option<CouponInfo>,
     pub delivery_info: Option<DeliveryInfo>,
+    pub product_info: ProductInfo,
     pub uuid: Uuid,
 }
 
@@ -197,7 +199,31 @@ pub struct ConvertCartPayload {
     pub seller_prices: HashMap<ProductId, ProductSellerPrice>,
     pub coupons: HashMap<CouponId, CouponInfo>,
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
+    pub product_info: HashMap<ProductId, ProductInfo>,
     pub uuid: Uuid,
+}
+
+impl From<ConvertCartWithConversionId> for ConvertCartPayload {
+    fn from(other: ConvertCartWithConversionId) -> Self {
+        let ConvertCartWithConversionId {
+            conversion_id,
+            convert_cart,
+        } = other;
+        
+        Self {
+            conversion_id: Some(conversion_id),
+            user_id: convert_cart.customer_id,
+            seller_prices: convert_cart.prices,
+            address: convert_cart.address,
+            receiver_name: convert_cart.receiver_name,
+            receiver_phone: convert_cart.receiver_phone,
+            receiver_email: convert_cart.receiver_email,
+            coupons: convert_cart.coupons,
+            delivery_info: convert_cart.delivery_info,
+            product_info: convert_cart.product_info,
+            uuid: convert_cart.uuid,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
