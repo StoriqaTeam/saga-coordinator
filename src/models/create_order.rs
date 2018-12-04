@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use uuid::Uuid;
 
-use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, ProductInfo, Order};
+use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order, ProductInfo};
 use stq_static_resources::{Currency, OrderState};
 use stq_types::*;
 
@@ -209,7 +209,7 @@ impl From<ConvertCartWithConversionId> for ConvertCartPayload {
             conversion_id,
             convert_cart,
         } = other;
-        
+
         Self {
             conversion_id: Some(conversion_id),
             user_id: convert_cart.customer_id,
