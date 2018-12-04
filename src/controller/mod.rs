@@ -218,12 +218,8 @@ impl Controller for ControllerImpl {
 
             (&Method::Post, Some(Route::CreateOrder)) => serialize_future(
                 parse_body::<ConvertCart>(req.body())
-                    .map_err(|e| {
-                        FailureError::from(
-                            e.context("Parsing body // POST /create_order in ConvertCart failed!")
-                                .context(Error::Parse),
-                        )
-                    }).and_then(move |new_order| {
+                    .map_err(|e| FailureError::from(e.context("Parsing body failed, target: ConvertCart").context(Error::Parse)))
+                    .and_then(move |new_order| {
                         order_service
                             .create(new_order)
                             .map(|(_, user)| user)

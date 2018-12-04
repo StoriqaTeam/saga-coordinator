@@ -75,28 +75,18 @@ impl OrderServiceImpl {
         // Create Order
         debug!("Converting cart, input: {:?}", input);
         let convert_cart: ConvertCartWithConversionId = input.into();
-        let convertion_id = convert_cart.conversion_id;
+        let conversion_id = convert_cart.conversion_id;
         let log = self.log.clone();
         log.lock()
             .unwrap()
-            .push(CreateOrderOperationStage::OrdersConvertCartStart(convertion_id));
+            .push(CreateOrderOperationStage::OrdersConvertCartStart(conversion_id));
 
         self.orders_microservice
-            .convert_cart(ConvertCartPayload {
-                conversion_id: Some(convert_cart.conversion_id),
-                user_id: convert_cart.convert_cart.customer_id,
-                seller_prices: convert_cart.convert_cart.prices,
-                address: convert_cart.convert_cart.address,
-                receiver_name: convert_cart.convert_cart.receiver_name,
-                receiver_phone: convert_cart.convert_cart.receiver_phone,
-                receiver_email: convert_cart.convert_cart.receiver_email,
-                coupons: convert_cart.convert_cart.coupons,
-                delivery_info: convert_cart.convert_cart.delivery_info,
-                uuid: convert_cart.convert_cart.uuid,
-            }).and_then(move |res| {
+            .convert_cart(convert_cart.into())
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
-                    .push(CreateOrderOperationStage::OrdersConvertCartComplete(convertion_id));
+                    .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
                 Ok(res)
             }).then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
