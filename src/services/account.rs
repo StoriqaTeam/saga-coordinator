@@ -76,6 +76,10 @@ impl AccountServiceImpl {
             gender: input_user.gender.clone(),
             birthdate: input_user.birthdate,
             last_login_at: input_user.last_login_at,
+            referal: input_user.referal,
+            utm_marks: input_user.utm_marks,
+            country: input_user.country,
+            referer: input_user.referer,
             saga_id: saga_id_arg,
         });
         let create_profile = SagaCreateProfile {
