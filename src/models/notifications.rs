@@ -1,4 +1,4 @@
-use stq_types::{EmarsysId, UserId};
+use stq_types::{Alpha3, EmarsysId, UserId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateEmarsysContactPayload {
@@ -6,6 +6,7 @@ pub struct CreateEmarsysContactPayload {
     pub email: String,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    pub country: Option<Alpha3>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

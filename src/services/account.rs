@@ -363,6 +363,7 @@ impl AccountServiceImpl {
                                 email: user.email.clone(),
                                 first_name: user.first_name.clone(),
                                 last_name: user.last_name.clone(),
+                                country: user.country.clone(),
                             }).then(|res| match res {
                                 Ok((s, _)) => Ok((s, user)),
                                 Err((s, _)) => Ok((s, user)),
@@ -681,6 +682,7 @@ impl AccountService for AccountServiceImpl {
                             email: user.email,
                             first_name: user.first_name,
                             last_name: user.last_name,
+                            country: user.country,
                         }).then(|res| match res {
                             Ok((self_service, _)) => Ok((self_service, token)),
                             Err((self_service, _)) => Ok((self_service, token)),
