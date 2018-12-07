@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order, ProductInfo};
-use stq_static_resources::{Currency, OrderState};
+use stq_static_resources::{CommitterRole, Currency, OrderState};
 use stq_types::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -143,6 +143,7 @@ pub struct UpdateStatePayload {
     pub state: OrderState,
     pub track_id: Option<String>,
     pub comment: Option<String>,
+    pub committer_role: CommitterRole,
 }
 
 impl From<BillingOrderInfo> for UpdateStatePayload {
@@ -158,6 +159,7 @@ impl From<BillingOrderInfo> for UpdateStatePayload {
             state: order_info.status,
             track_id: None,
             comment,
+            committer_role: CommitterRole::Customer,
         }
     }
 }
