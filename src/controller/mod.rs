@@ -264,7 +264,7 @@ impl Controller for ControllerImpl {
                         )
                     }).and_then(move |payload| {
                         order_service
-                            .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment)
+                            .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment, payload.committer_role)
                             .map(|(_, order)| order)
                             .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occurred.")))
                     }),
