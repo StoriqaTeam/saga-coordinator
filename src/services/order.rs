@@ -9,7 +9,7 @@ use futures::stream::iter_ok;
 
 use stq_api::orders::Order;
 use stq_static_resources::{
-    EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
+    CommitterRole, EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
 use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
 
@@ -33,6 +33,7 @@ pub trait OrderService {
         order_state: OrderState,
         track_id: Option<String>,
         comment: Option<String>,
+        committer_role: CommitterRole,
     ) -> ServiceFuture<Box<OrderService>, Option<Order>>;
 }
 
@@ -418,8 +419,9 @@ impl OrderServiceImpl {
         order_state: OrderState,
         track_id: Option<String>,
         comment: Option<String>,
+        committer_role: CommitterRole,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
-        self.set_state(order_slug, order_state, track_id, comment)
+        self.set_state(order_slug, order_state, track_id, comment, committer_role)
             .and_then(move |(s, order)| {
                 s.notify(&[order.clone()]).then(|res| match res {
                     Ok((s, _)) => Ok((s, order)),
@@ -476,6 +478,7 @@ impl OrderServiceImpl {
         order_state: OrderState,
         track_id: Option<String>,
         comment: Option<String>,
+        committer_role: CommitterRole,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
         let orders_microservice = self.orders_microservice.clone();
         self.orders_microservice
@@ -504,6 +507,7 @@ impl OrderServiceImpl {
                             state: order_state,
                             comment,
                             track_id,
+                            committer_role,
                         },
                     ))
                 }
@@ -643,13 +647,14 @@ impl OrderService for OrderServiceImpl {
         order_state: OrderState,
         track_id: Option<String>,
         comment: Option<String>,
+        committer_role: CommitterRole,
     ) -> ServiceFuture<Box<OrderService>, Option<Order>> {
         debug!(
-            "set order {} status '{}' with track {:?} and comment {:?}",
-            order_slug, order_state, track_id, comment
+            "set order {} status '{}' with track {:?}, comment {:?}, committer: {}",
+            order_slug, order_state, track_id, comment, committer_role
         );
         Box::new(
-            self.set_state_happy(order_slug, order_state, track_id, comment)
+            self.set_state_happy(order_slug, order_state, track_id, comment, committer_role)
                 .map(|(s, o)| (Box::new(s) as Box<OrderService>, o))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e))),
         )
