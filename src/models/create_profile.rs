@@ -38,6 +38,10 @@ pub struct NewUser {
     pub birthdate: Option<NaiveDate>,
     pub last_login_at: SystemTime,
     pub saga_id: SagaId,
+    pub referal: Option<UserId>,
+    pub utm_marks: Option<serde_json::Value>,
+    pub country: Option<String>,
+    pub referer: Option<String>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
