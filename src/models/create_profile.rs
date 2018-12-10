@@ -25,6 +25,7 @@ pub struct User {
     pub updated_at: SystemTime,
     pub saga_id: SagaId,
     pub is_blocked: bool,
+    pub revoke_before: SystemTime,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
