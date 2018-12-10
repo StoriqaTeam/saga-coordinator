@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use uuid::Uuid;
 
 use stq_static_resources::{Device, Gender, Project, Provider};
-use stq_types::{EmarsysId, MerchantId, RoleId, SagaId, UserId};
+use stq_types::{Alpha3, EmarsysId, MerchantId, RoleId, SagaId, UserId};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
@@ -25,6 +25,10 @@ pub struct User {
     pub updated_at: SystemTime,
     pub saga_id: SagaId,
     pub is_blocked: bool,
+    pub referal: Option<UserId>,
+    pub utm_marks: Option<serde_json::Value>,
+    pub country: Option<Alpha3>,
+    pub referer: Option<String>,
     pub revoke_before: SystemTime,
 }
 
@@ -41,7 +45,7 @@ pub struct NewUser {
     pub saga_id: SagaId,
     pub referal: Option<UserId>,
     pub utm_marks: Option<serde_json::Value>,
-    pub country: Option<String>,
+    pub country: Option<Alpha3>,
     pub referer: Option<String>,
 }
 
