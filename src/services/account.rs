@@ -102,7 +102,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::AccountCreationComplete(saga_id_arg));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((self, e)),
             });
@@ -130,7 +131,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::UsersRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(users_role) => Ok((self, users_role)),
                 Err(e) => Err((self, e)),
             });
@@ -158,7 +160,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::StoreRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(stores_role) => Ok((self, stores_role)),
                 Err(e) => Err((self, e)),
             });
@@ -186,7 +189,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
                 Err(e) => Err((self, e)),
             });
@@ -214,7 +218,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::DeliveryRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
                 Err(e) => Err((self, e)),
             });
@@ -240,7 +245,8 @@ impl AccountServiceImpl {
                     .unwrap()
                     .push(CreateProfileOperationStage::BillingCreateMerchantComplete(user_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
@@ -259,7 +265,8 @@ impl AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
             Project::Wallet => {
                 let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.wallet.clone();
@@ -268,7 +275,8 @@ impl AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
         };
 
@@ -294,7 +302,8 @@ impl AccountServiceImpl {
                     token,
                 };
                 notifications_microservice.email_verification(Some(Initiator::Superadmin), email, project_)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
             });
@@ -314,7 +323,8 @@ impl AccountServiceImpl {
                     "Successfully created new contact {} in emarsys for user {}",
                     created_contact.emarsys_id, created_contact.user_id
                 );
-            }).map(|created_contact| created_contact.emarsys_id)
+            })
+            .map(|created_contact| created_contact.emarsys_id)
             .and_then(move |emarsys_id| {
                 users_microservice.update_user(
                     Some(Initiator::User(user_id)),
@@ -324,9 +334,11 @@ impl AccountServiceImpl {
                         ..Default::default()
                     },
                 )
-            }).inspect(|user| {
+            })
+            .inspect(|user| {
                 info!("Successfully changed emarsys emarsys_id for user {}", user.id);
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(error) => {
                     error!("Failed to create new contact in emarsys: {:?}", error);
@@ -364,7 +376,8 @@ impl AccountServiceImpl {
                                 first_name: user.first_name.clone(),
                                 last_name: user.last_name.clone(),
                                 country: user.country.clone(),
-                            }).then(|res| match res {
+                            })
+                            .then(|res| match res {
                                 Ok((s, _)) => Ok((s, user)),
                                 Err((s, _)) => Ok((s, user)),
                             }),
@@ -470,7 +483,8 @@ impl AccountService for AccountServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<AccountService>, e))
                     })
-                }).map_err(|(s, e): (Box<AccountService>, FailureError)| (s, parse_validation_errors(e, &["email", "password"]))),
+                })
+                .map_err(|(s, e): (Box<AccountService>, FailureError)| (s, parse_validation_errors(e, &["email", "password"]))),
         )
     }
 
@@ -486,7 +500,8 @@ impl AccountService for AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
             Project::Wallet => {
                 let config::DevicesUrls { web, ios, android } = self.config.notification_urls.reset_password.wallet.clone();
@@ -497,7 +512,8 @@ impl AccountService for AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
         };
 
@@ -537,7 +553,8 @@ impl AccountService for AccountServiceImpl {
                         Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
                     )) as Box<Future<Item = (), Error = FailureError>>
                 }
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                 Err(e) => Err((Box::new(self) as Box<AccountService>, parse_validation_errors(e, &["email"]))),
             });
@@ -558,7 +575,8 @@ impl AccountService for AccountServiceImpl {
                 users_microservice
                     .get_by_email(Some(Initiator::Superadmin), &reset_token.email)
                     .map(|user| (user, reset_token.token))
-            }).and_then(move |(user, token)| {
+            })
+            .and_then(move |(user, token)| {
                 if let Some(user) = user {
                     let user = EmailUser {
                         email: user.email.clone(),
@@ -576,7 +594,8 @@ impl AccountService for AccountServiceImpl {
                         Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
                     )) as Box<Future<Item = String, Error = FailureError>>
                 }
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(token) => Ok((Box::new(self) as Box<AccountService>, token)),
                 Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
             });
@@ -595,7 +614,8 @@ impl AccountService for AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
             Project::Wallet => {
                 let config::DevicesUrls { web, ios, android } = self.config.notification_urls.verify_email.wallet.clone();
@@ -606,7 +626,8 @@ impl AccountService for AccountServiceImpl {
                         Device::WEB => web.clone(),
                         Device::IOS => ios,
                         Device::Android => android,
-                    }).unwrap_or_else(|| web)
+                    })
+                    .unwrap_or_else(|| web)
             }
         };
 
@@ -645,7 +666,8 @@ impl AccountService for AccountServiceImpl {
                         Error::Validate(validation_errors!({"email": ["email" => "Email does not exists"]})).into(),
                     )) as Box<Future<Item = (), Error = FailureError>>
                 }
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
                 Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
             });
@@ -678,10 +700,12 @@ impl AccountService for AccountServiceImpl {
                                 Ok((user, email_apply_token))
                             }
                         })
-                }).then(|res| match res {
+                })
+                .then(|res| match res {
                     Ok((user, token)) => Ok((self, user, token)),
                     Err(err) => Err((self, err)),
-                }).and_then(move |(self_service, user, token)| {
+                })
+                .and_then(move |(self_service, user, token)| {
                     self_service
                         .create_emarsys_contact(CreateEmarsysContactPayload {
                             user_id: user.id,
@@ -689,11 +713,13 @@ impl AccountService for AccountServiceImpl {
                             first_name: user.first_name,
                             last_name: user.last_name,
                             country: user.country,
-                        }).then(|res| match res {
+                        })
+                        .then(|res| match res {
                             Ok((self_service, _)) => Ok((self_service, token)),
                             Err((self_service, _)) => Ok((self_service, token)),
                         })
-                }).then(|res| match res {
+                })
+                .then(|res| match res {
                     Ok((self_service, token)) => Ok((Box::new(self_service) as Box<AccountService>, token)),
                     Err((self_service, e)) => Err((Box::new(self_service) as Box<AccountService>, e)),
                 }),

@@ -44,7 +44,8 @@ impl<T: 'static + HttpClient + Clone> DeliveryMicroservice for DeliveryMicroserv
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in delivery microservice failed.")
                     .context(Error::HttpClient)
                     .into()

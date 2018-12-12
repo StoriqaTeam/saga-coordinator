@@ -54,7 +54,8 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -84,7 +85,8 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating store in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()

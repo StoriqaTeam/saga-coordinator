@@ -57,7 +57,8 @@ impl Controller for ControllerImpl {
         let request_timeout = match headers.get::<RequestTimeoutHeader>() {
             None => default_timeout,
             Some(header) => header.0.parse::<u64>().map(Duration::from_millis).unwrap_or(default_timeout),
-        }.checked_sub(Duration::from_millis(self.config.service.processing_timeout_ms))
+        }
+        .checked_sub(Duration::from_millis(self.config.service.processing_timeout_ms))
         .unwrap_or(Duration::new(0, 0));
 
         let http_client = TimeLimitedHttpClient::new(self.http_client.clone(), request_timeout);
@@ -137,7 +138,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /create_account in SagaCreateProfile failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |profile| {
+                    })
+                    .and_then(move |profile| {
                         account_service
                             .create(profile)
                             .map(|(_, user)| user)
@@ -151,7 +153,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /email_verify in VerifyRequest failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |profile| {
+                    })
+                    .and_then(move |profile| {
                         account_service
                             .request_email_verification(profile)
                             .map(|(_, user)| user)
@@ -165,7 +168,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /email_verify_apply in EmailVerifyApply failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |profile| {
+                    })
+                    .and_then(move |profile| {
                         account_service
                             .request_email_verification_apply(profile)
                             .map(|(_, user)| user)
@@ -179,7 +183,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /reset_password in ResetRequest failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |profile| {
+                    })
+                    .and_then(move |profile| {
                         account_service
                             .request_password_reset(profile)
                             .map(|(_, user)| user)
@@ -193,7 +198,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /reset_password_apply in PasswordResetApply failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |profile| {
+                    })
+                    .and_then(move |profile| {
                         account_service
                             .request_password_reset_apply(profile)
                             .map(|(_, user)| user)
@@ -208,7 +214,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /create_store in NewStore failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |store| {
+                    })
+                    .and_then(move |store| {
                         store_service
                             .create(store)
                             .map(|(_, user)| user)
@@ -245,7 +252,8 @@ impl Controller for ControllerImpl {
                             e.context("Parsing body // POST /orders/update_state in BillingOrdersVec failed!")
                                 .context(Error::Parse),
                         )
-                    }).and_then(move |orders_info| {
+                    })
+                    .and_then(move |orders_info| {
                         order_service
                             .update_state_by_billing(orders_info)
                             .map(|(_, _)| ())
@@ -260,9 +268,11 @@ impl Controller for ControllerImpl {
                             e.context(format!(
                                 "Parsing body // POST /orders/{}/set_state in UpdateStatePayload failed!",
                                 order_slug
-                            )).context(Error::Parse),
+                            ))
+                            .context(Error::Parse),
                         )
-                    }).and_then(move |payload| {
+                    })
+                    .and_then(move |payload| {
                         order_service
                             .manual_set_state(order_slug, payload.state, payload.track_id, payload.comment, payload.committer_role)
                             .map(|(_, order)| order)
@@ -316,10 +326,12 @@ impl Controller for ControllerImpl {
                     "Request to non existing endpoint in saga coordinator microservice! {:?} {:?}",
                     m,
                     path
-                ).context(Error::NotFound)
+                )
+                .context(Error::NotFound)
                 .into(),
             )),
-        }.map_err(|err| {
+        }
+        .map_err(|err| {
             let wrapper = ErrorMessageWrapper::<Error>::from(&err);
             if wrapper.inner.code == 500 {
                 log_and_capture_error(&err);

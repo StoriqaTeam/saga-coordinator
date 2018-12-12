@@ -50,7 +50,8 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating merchant in billing microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -89,7 +90,8 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating merchant in billing microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -106,7 +108,8 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in billing microservice failed.")
                     .context(Error::HttpClient)
                     .into()

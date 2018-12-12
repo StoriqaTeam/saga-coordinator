@@ -70,7 +70,8 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating password reset token in users microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -120,7 +121,8 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating email verify token in users microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -137,7 +139,8 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in users microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -154,7 +157,8 @@ impl<T: 'static + HttpClient + Clone> UsersMicroservice for UsersMicroserviceImp
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating user in users microservice failed.")
                     .context(Error::HttpClient)
                     .into()

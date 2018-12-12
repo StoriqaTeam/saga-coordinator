@@ -55,7 +55,8 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in orders microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -116,12 +117,14 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(move |e| {
+            )
+            .map_err(move |e| {
                 parse_validation_errors(e.into(), &["order"])
                     .context(format!(
                         "Setting order with id {:?} state {} in orders microservice failed.",
                         order_id, order_state
-                    )).context(Error::HttpClient)
+                    ))
+                    .context(Error::HttpClient)
                     .into()
             }),
         )
@@ -137,7 +140,8 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
                 url,
                 Some(BuyNowPayload { conversion_id, buy_now }),
                 None,
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 parse_validation_errors(e.into(), &["order"])
                     .context("Create order from buy now data in orders microservice failed.")
                     .context(Error::HttpClient)
