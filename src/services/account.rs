@@ -671,7 +671,13 @@ impl AccountService for AccountServiceImpl {
 
                     notifications_microservice
                         .apply_email_verification(Some(Initiator::Superadmin), email, project_)
-                        .map(move |_| (user, email_apply_token))
+                        .then(|res| match res {
+                            Ok(_) => Ok((user, email_apply_token)),
+                            Err(err) => {
+                                warn!("{}", err.context("Could not send successful email verification notification"));
+                                Ok((user, email_apply_token))
+                            }
+                        })
                 }).then(|res| match res {
                     Ok((user, token)) => Ok((self, user, token)),
                     Err(err) => Err((self, err)),
