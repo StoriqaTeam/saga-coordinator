@@ -89,7 +89,8 @@ impl OrderServiceImpl {
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
                 Err(e) => Err((self, e)),
             })
@@ -146,7 +147,8 @@ impl OrderServiceImpl {
                     .unwrap()
                     .push(CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(orders) => Ok((self, orders)),
                 Err(e) => Err((self, e)),
             })
@@ -169,7 +171,8 @@ impl OrderServiceImpl {
                     .unwrap()
                     .push(CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(user) => Ok((self, user)),
                 Err(e) => Err((self, e)),
             })
@@ -189,8 +192,10 @@ impl OrderServiceImpl {
                     format_err!("User is not found in users microservice.")
                         .context(Error::NotFound)
                         .into()
-                }).into_future()
-            }).and_then(move |user| {
+                })
+                .into_future()
+            })
+            .and_then(move |user| {
                 let user = EmailUser {
                     email: user.email.clone(),
                     first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -220,8 +225,10 @@ impl OrderServiceImpl {
                         format_err!("Store is not found in stores microservice.")
                             .context(Error::NotFound)
                             .into()
-                    }).into_future()
-            }).and_then(move |store| {
+                    })
+                    .into_future()
+            })
+            .and_then(move |store| {
                 if let Some(store_email) = store.email {
                     let email = OrderCreateForStore {
                         store_email,
@@ -255,8 +262,10 @@ impl OrderServiceImpl {
                     format_err!("User is not found in users microservice.")
                         .context(Error::NotFound)
                         .into()
-                }).into_future()
-            }).and_then(move |user| {
+                })
+                .into_future()
+            })
+            .and_then(move |user| {
                 let user = EmailUser {
                     email: user.email.clone(),
                     first_name: user.first_name.unwrap_or_else(|| "user".to_string()),
@@ -292,8 +301,10 @@ impl OrderServiceImpl {
                         format_err!("Store is not found in stores microservice.")
                             .context(Error::NotFound)
                             .into()
-                    }).into_future()
-            }).and_then(move |store| {
+                    })
+                    .into_future()
+            })
+            .and_then(move |store| {
                 if let Some(store_email) = store.email {
                     let email = OrderUpdateStateForStore {
                         store_email,
@@ -404,7 +415,8 @@ impl OrderServiceImpl {
                     Ok((s, _)) => Ok((s, orders)),
                     Err((s, _)) => Ok((s, orders)),
                 })
-            }).and_then(move |(s, orders)| {
+            })
+            .and_then(move |(s, orders)| {
                 s.notify(&orders).then(|res| match res {
                     Ok((s, _)) => Ok((s, ())),
                     Err((s, _)) => Ok((s, ())),
@@ -453,8 +465,10 @@ impl OrderServiceImpl {
                             format_err!("Order is not found in orders microservice! id: {}", order_id)
                                 .context(Error::NotFound)
                                 .into(),
-                        ).into_future()
-                }).and_then(move |order| {
+                        )
+                        .into_future()
+                })
+                .and_then(move |order| {
                     if order.state == order_info.status {
                         // if this status already set, do not update
                         Either::A(future::ok(None))
@@ -489,8 +503,10 @@ impl OrderServiceImpl {
                         format_err!("Order is not found in orders microservice! slug: {}", order_slug)
                             .context(Error::NotFound)
                             .into(),
-                    ).into_future()
-            }).and_then(move |order| {
+                    )
+                    .into_future()
+            })
+            .and_then(move |order| {
                 if order.state == order_state {
                     // if this status already set, do not update
                     info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
@@ -511,7 +527,8 @@ impl OrderServiceImpl {
                         },
                     ))
                 }
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(order) => Ok((self, order)),
                 Err(e) => Err((self, e)),
             })
@@ -548,11 +565,13 @@ impl OrderServiceImpl {
                                             stock.warehouse_id,
                                             stock.product_id,
                                             Quantity(new_quantity),
-                                        ).map(|_| ()),
+                                        )
+                                        .map(|_| ()),
                                 );
                             }
                             Either::B(future::ok(()))
-                        }).map_err(|e| {
+                        })
+                        .map_err(|e| {
                             let err = e
                                 .context("decrementing quantity in warehouses microservice failed.")
                                 .context(Error::HttpClient)
@@ -619,7 +638,8 @@ impl OrderService for OrderServiceImpl {
                         };
                         future::err((Box::new(s) as Box<OrderService>, e))
                     })
-                }).map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
+                })
+                .map_err(|(s, e): (Box<OrderService>, FailureError)| (s, parse_validation_errors(e, &["phone"]))),
         )
     }
 

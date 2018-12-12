@@ -61,7 +61,8 @@ impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicro
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Creating role in warehouses microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -89,7 +90,8 @@ impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicro
                 url,
                 Some(StockSetPayload { quantity }),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Setting product quantity in warehouses microservice failed.")
                     .context(Error::HttpClient)
                     .into()

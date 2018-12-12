@@ -66,7 +66,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
+            )
+            .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
         )
     }
 
@@ -84,7 +85,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
+            )
+            .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
         )
     }
 
@@ -102,7 +104,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
+            )
+            .map_err(|e| e.context("Sending notification failed.").context(Error::HttpClient).into()),
         )
     }
 
@@ -120,7 +123,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 initiator.map(Into::into),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending email to notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -137,7 +141,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending order update for store in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -154,7 +159,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending order update for user in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -171,7 +177,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending order create for store in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -200,7 +207,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending change store moderation status for user in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -217,7 +225,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending change base product moderation status for user in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -234,7 +243,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending change store moderation status for moderator in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -254,7 +264,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 Some(initiator.into()),
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 e.context("Sending change base product moderation status for moderator in notifications microservice failed.")
                     .context(Error::HttpClient)
                     .into()
@@ -271,7 +282,8 @@ impl<T: 'static + HttpClient + Clone> NotificationsMicroservice for Notification
                 url,
                 Some(payload),
                 None,
-            ).map_err(|e| e.context("Creating contact in emarsys failed.").context(Error::HttpClient).into()),
+            )
+            .map_err(|e| e.context("Creating contact in emarsys failed.").context(Error::HttpClient).into()),
         )
     }
 }

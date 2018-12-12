@@ -87,7 +87,8 @@ impl StoreServiceImpl {
             .and_then(move |store| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
                 Ok(store)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(store) => Ok((self, store)),
                 Err(e) => Err((self, e)),
             });
@@ -119,7 +120,8 @@ impl StoreServiceImpl {
                     .unwrap()
                     .push(CreateStoreOperationStage::WarehousesRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(warehouses_role) => Ok((self, warehouses_role)),
                 Err(e) => Err((self, e)),
             });
@@ -149,7 +151,8 @@ impl StoreServiceImpl {
                     .unwrap()
                     .push(CreateStoreOperationStage::OrdersRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(orders_role) => Ok((self, orders_role)),
                 Err(e) => Err((self, e)),
             });
@@ -177,7 +180,8 @@ impl StoreServiceImpl {
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(billing_role) => Ok((self, billing_role)),
                 Err(e) => Err((self, e)),
             });
@@ -204,12 +208,14 @@ impl StoreServiceImpl {
                 e.context("Creating role in delivery microservice failed.")
                     .context(Error::HttpClient)
                     .into()
-            }).and_then(move |res| {
+            })
+            .and_then(move |res| {
                 log.lock()
                     .unwrap()
                     .push(CreateStoreOperationStage::DeliveryRoleSetComplete(new_role_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(delivery_role) => Ok((self, delivery_role)),
                 Err(e) => Err((self, e)),
             });
@@ -235,7 +241,8 @@ impl StoreServiceImpl {
                     .unwrap()
                     .push(CreateStoreOperationStage::BillingCreateMerchantComplete(store_id));
                 Ok(res)
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(merchant) => Ok((self, merchant)),
                 Err(e) => Err((self, e)),
             });
@@ -251,19 +258,23 @@ impl StoreServiceImpl {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_warehouses_role(user_id, store_id).map(|(s, _)| (s, store))
-                }).and_then(|(s, store)| {
+                })
+                .and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_orders_role(user_id, store_id).map(|(s, _)| (s, store))
-                }).and_then(|(s, store)| {
+                })
+                .and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_billing_role(user_id, store_id).map(|(s, _)| (s, store))
-                }).and_then(|(s, store)| {
+                })
+                .and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
                     s.create_delivery_role(user_id, store_id).map(|(s, _)| (s, store))
-                }).and_then(|(s, store)| s.create_merchant(store.id).map(|(s, _)| (s, store))),
+                })
+                .and_then(|(s, store)| s.create_merchant(store.id).map(|(s, _)| (s, store))),
         )
     }
 
@@ -444,7 +455,8 @@ impl StoreServiceImpl {
                 });
 
                 fut
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
             })
@@ -513,8 +525,10 @@ impl StoreServiceImpl {
                             format_err!("Store is not found in stores microservice.")
                                 .context(Error::NotFound)
                                 .into()
-                        }).into_future()
-                }).and_then(move |store| {
+                        })
+                        .into_future()
+                })
+                .and_then(move |store| {
                     users_microservice
                         .get(Some(Initiator::Superadmin), store.user_id)
                         .and_then(move |store_manager| {
@@ -595,7 +609,8 @@ impl StoreServiceImpl {
                 });
 
                 fut
-            }).then(|res| match res {
+            })
+            .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
             })
@@ -615,7 +630,8 @@ impl StoreService for StoreServiceImpl {
                         };
                         futures::future::err((Box::new(s) as Box<StoreService>, e))
                     })
-                }).map_err(|(s, e): (Box<StoreService>, FailureError)| {
+                })
+                .map_err(|(s, e): (Box<StoreService>, FailureError)| {
                     (
                         s,
                         parse_validation_errors(
@@ -642,7 +658,8 @@ impl StoreService for StoreServiceImpl {
                 .and_then(|(s, store)| {
                     s.notify_manager_store_update_moderation_status(store.id, store.user_id, store.status)
                         .map(|(s, _)| (s, store))
-                }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                })
+                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -654,7 +671,8 @@ impl StoreService for StoreServiceImpl {
                 .and_then(|(s, store)| {
                     s.notify_moderators_store_update_moderation_status(store.id, store.status)
                         .map(|(s, _)| (s, store))
-                }).map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                })
+                .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -666,7 +684,8 @@ impl StoreService for StoreServiceImpl {
                 .and_then(|(s, base)| {
                     s.notify_manager_base_product_update_moderation_status(base.store_id, base.id, base.status)
                         .map(|(s, _)| (s, ()))
-                }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                })
+                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
@@ -677,7 +696,8 @@ impl StoreService for StoreServiceImpl {
                 .and_then(|(s, base)| {
                     s.notify_moderators_base_product_update_moderation_status(base.store_id, base.id, base.status)
                         .map(|(s, _)| (s, ()))
-                }).map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
+                })
+                .map(|(s, _)| (Box::new(s) as Box<StoreService>, ()))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
