@@ -615,6 +615,35 @@ impl StoreServiceImpl {
                 Err(e) => Err((self, e)),
             })
     }
+
+    fn remove_products_from_cart_after_base_product_status_change(
+        self,
+        base_product_id: BaseProductId,
+        initial_status: ModerationStatus,
+        status: ModerationStatus,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let stores_microservice = self.stores_microservice.clone();
+        let orders_microservice = self.orders_microservice.clone();
+        let res: Box<Future<Item = (), Error = FailureError>> = match (initial_status, status) {
+            (ModerationStatus::Published, status) if status != ModerationStatus::Published => {
+                let fut = stores_microservice
+                    .get_products_by_base_product(base_product_id)
+                    .map(|products| DeleteProductsFromCartsPayload {
+                        product_ids: products.into_iter().map(|p| p.id).collect(),
+                    })
+                    .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload));
+                Box::new(fut)
+            }
+            _ => {
+                //do nothing
+                Box::new(Ok(()).into_future())
+            }
+        };
+        res.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(err) => Err((self, err)),
+        })
+    }
 }
 
 impl StoreService for StoreServiceImpl {
@@ -680,7 +709,26 @@ impl StoreService for StoreServiceImpl {
     /// Set moderation status for base_product_id
     fn set_moderation_status_base_product(self, payload: BaseProductModerate) -> ServiceFuture<Box<StoreService>, ()> {
         Box::new(
-            self.set_moderation_status_base_product(payload)
+            self.stores_microservice
+                .get_base_product(payload.base_product_id, Visibility::Active)
+                .then(move |res| match res {
+                    Ok(Some(base_product)) => Ok((self, base_product.status)),
+                    Ok(None) => Err((
+                        self,
+                        format_err!("Base product is not found in stores microservice.")
+                            .context(Error::NotFound)
+                            .into(),
+                    )),
+                    Err(err) => Err((self, err)),
+                })
+                .and_then(|(s, initial_status)| {
+                    s.set_moderation_status_base_product(payload)
+                        .map(move |(s, base_product)| (s, initial_status, base_product))
+                })
+                .and_then(|(s, initial_status, base_product)| {
+                    s.remove_products_from_cart_after_base_product_status_change(base_product.id, initial_status, base_product.status)
+                        .map(|(s, _)| (s, base_product))
+                })
                 .and_then(|(s, base)| {
                     s.notify_manager_base_product_update_moderation_status(base.store_id, base.id, base.status)
                         .map(|(s, _)| (s, ()))
@@ -689,7 +737,8 @@ impl StoreService for StoreServiceImpl {
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
-    /// send base product to moderation from store manager
+
+    /// Send base product to moderation from store manager
     fn send_to_moderation_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Box<StoreService>, ()> {
         Box::new(
             self.send_to_moderation_base_product(base_product_id)
