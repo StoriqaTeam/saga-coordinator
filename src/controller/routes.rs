@@ -1,5 +1,5 @@
 use stq_router::RouteParser;
-use stq_types::{BaseProductId, OrderSlug, StoreId};
+use stq_types::{BaseProductId, OrderSlug, ProductId, StoreId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -19,6 +19,7 @@ pub enum Route {
     BaseProductModerate,
     BaseProductDeactivate(BaseProductId),
     BaseProductModeration(BaseProductId),
+    ProductDeactivate(ProductId),
 }
 
 pub fn create_route_parser() -> RouteParser<Route> {
@@ -70,6 +71,13 @@ pub fn create_route_parser() -> RouteParser<Route> {
             .get(0)
             .and_then(|string_id| string_id.parse::<BaseProductId>().ok())
             .map(Route::BaseProductDeactivate)
+    });
+
+    router.add_route_with_params(r"^/products/(\d+)/deactivate$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse::<ProductId>().ok())
+            .map(Route::ProductDeactivate)
     });
 
     router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);

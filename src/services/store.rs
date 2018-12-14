@@ -9,7 +9,7 @@ use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
-use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, ProductId, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
 
 use stq_static_resources::{
     BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser, EmailUser, ModerationStatus,
@@ -37,6 +37,8 @@ pub trait StoreService {
     fn deactivate_base_product(self, base_product_id: BaseProductId) -> ServiceFuture<Box<StoreService>, BaseProduct>;
     /// Deactivate store
     fn deactivate_store(self, store: StoreId) -> ServiceFuture<Box<StoreService>, Store>;
+    /// Deactivate product
+    fn deactivate_product(self, product_id: ProductId) -> ServiceFuture<Box<StoreService>, Product>;
 }
 
 /// Attributes services, responsible for Attribute-related CRUD operations
@@ -872,6 +874,34 @@ impl StoreService for StoreServiceImpl {
                         .map(move |(s, _)| (s, store))
                 })
                 .map(|(s, store)| (Box::new(s) as Box<StoreService>, store))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+
+    /// Deactivate product
+    fn deactivate_product(self, product_id: ProductId) -> ServiceFuture<Box<StoreService>, Product> {
+        let orders_microservice = self.orders_microservice.clone();
+        Box::new(
+            self.stores_microservice
+                .deactivate_product(None, product_id)
+                .then(move |res| match res {
+                    Ok(product) => Ok((self, product)),
+                    Err(err) => Err((self, err)),
+                })
+                .and_then(move |(s, product)| {
+                    orders_microservice
+                        .delete_products_from_all_carts(
+                            None,
+                            DeleteProductsFromCartsPayload {
+                                product_ids: vec![product_id],
+                            },
+                        )
+                        .then(move |res| match res {
+                            Ok(_) => Ok((s, product)),
+                            Err(err) => Err((s, err)),
+                        })
+                })
+                .map(|(s, product)| (Box::new(s) as Box<StoreService>, product))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }

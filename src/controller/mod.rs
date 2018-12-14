@@ -336,6 +336,14 @@ impl Controller for ControllerImpl {
                     .map_err(|(_, e)| FailureError::from(e.context("Error deactivating base product occurred."))),
             ),
 
+            // POST /products/<product_id>/deactivate
+            (&Method::Post, Some(Route::ProductDeactivate(product_id))) => serialize_future(
+                store_service
+                    .deactivate_product(product_id)
+                    .map(|(_, _)| ())
+                    .map_err(|(_, e)| FailureError::from(e.context("Error deactivating product occurred."))),
+            ),
+
             // Fallback
             (m, _) => Box::new(future::err(
                 format_err!(
