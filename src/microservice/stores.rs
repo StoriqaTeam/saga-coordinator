@@ -29,6 +29,7 @@ pub trait StoresMicroservice {
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
     fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
     fn get_moderators(&self, initiator: Initiator) -> ApiFuture<Vec<UserId>>;
+    fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -37,6 +38,17 @@ pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceImpl<T> {
+    fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct> {
+        let url = format!("{}/base_products/{}", self.stores_url(), base_product_id);
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deactivate base product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
     fn delete_stores_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<StoresRole>> {
         let url = format!("{}/roles/by-id/{}", self.stores_url(), role_id);
         Box::new(
