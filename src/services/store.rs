@@ -624,25 +624,55 @@ impl StoreServiceImpl {
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let stores_microservice = self.stores_microservice.clone();
         let orders_microservice = self.orders_microservice.clone();
-        let res: Box<Future<Item = (), Error = FailureError>> = match (initial_status, status) {
-            (ModerationStatus::Published, status) if status != ModerationStatus::Published => {
-                let fut = stores_microservice
-                    .get_products_by_base_product(base_product_id)
-                    .map(|products| DeleteProductsFromCartsPayload {
-                        product_ids: products.into_iter().map(|p| p.id).collect(),
-                    })
-                    .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload));
-                Box::new(fut)
-            }
-            _ => {
-                //do nothing
-                Box::new(Ok(()).into_future())
-            }
+        let res: Box<Future<Item = (), Error = FailureError>> = if is_status_change_requires_to_delete_product(initial_status, status) {
+            let fut = stores_microservice
+                .get_products_by_base_product(base_product_id)
+                .map(|products| DeleteProductsFromCartsPayload {
+                    product_ids: products.into_iter().map(|p| p.id).collect(),
+                })
+                .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload));
+            Box::new(fut)
+        } else {
+            //do nothing
+            Box::new(Ok(()).into_future())
         };
         res.then(|res| match res {
             Ok(_) => Ok((self, ())),
             Err(err) => Err((self, err)),
         })
+    }
+
+    fn remove_products_from_cart_after_store_status_change(
+        self,
+        store_id: StoreId,
+        initial_status: ModerationStatus,
+        status: ModerationStatus,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let stores_microservice = self.stores_microservice.clone();
+        let orders_microservice = self.orders_microservice.clone();
+        let res: Box<Future<Item = (), Error = FailureError>> = if is_status_change_requires_to_delete_product(initial_status, status) {
+            let fut = stores_microservice
+                .get_products_by_store(store_id)
+                .map(|products| DeleteProductsFromCartsPayload {
+                    product_ids: products.into_iter().map(|p| p.id).collect(),
+                })
+                .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload));
+            Box::new(fut)
+        } else {
+            //do nothing
+            Box::new(Ok(()).into_future())
+        };
+        res.then(|res| match res {
+            Ok(_) => Ok((self, ())),
+            Err(err) => Err((self, err)),
+        })
+    }
+}
+
+fn is_status_change_requires_to_delete_product(initial_status: ModerationStatus, status: ModerationStatus) -> bool {
+    match (initial_status, status) {
+        (ModerationStatus::Published, status) if status != ModerationStatus::Published => true,
+        _ => false,
     }
 }
 
@@ -683,7 +713,26 @@ impl StoreService for StoreServiceImpl {
 
     fn set_store_moderation_status(self, payload: StoreModerate) -> ServiceFuture<Box<StoreService>, Store> {
         Box::new(
-            self.set_store_moderation_status(payload)
+            self.stores_microservice
+                .get(payload.store_id, Visibility::Active)
+                .then(|res| match res {
+                    Ok(Some(store)) => Ok((self, store.status)),
+                    Ok(None) => Err((
+                        self,
+                        format_err!("Store is not found in stores microservice.")
+                            .context(Error::NotFound)
+                            .into(),
+                    )),
+                    Err(err) => Err((self, err)),
+                })
+                .and_then(|(s, initial_status)| {
+                    s.set_store_moderation_status(payload)
+                        .map(move |(s, store)| (s, store, initial_status))
+                })
+                .and_then(|(s, store, initial_status)| {
+                    s.remove_products_from_cart_after_store_status_change(store.id, initial_status, store.status)
+                        .map(|(s, _)| (s, store))
+                })
                 .and_then(|(s, store)| {
                     s.notify_manager_store_update_moderation_status(store.id, store.user_id, store.status)
                         .map(|(s, _)| (s, store))

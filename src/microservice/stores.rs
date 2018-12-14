@@ -23,6 +23,7 @@ pub trait StoresMicroservice {
     fn get(&self, store: StoreId, visibility: Visibility) -> ApiFuture<Option<Store>>;
     fn get_base_product(&self, base_product_id: BaseProductId, visibility: Visibility) -> ApiFuture<Option<BaseProduct>>;
     fn get_products_by_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<Vec<Product>>;
+    fn get_products_by_store(&self, store_id: StoreId) -> ApiFuture<Vec<Product>>;
     fn set_store_moderation_status(&self, payload: StoreModerate) -> ApiFuture<Store>;
     fn send_to_moderation(&self, store_id: StoreId) -> ApiFuture<Store>;
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
@@ -140,6 +141,17 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         Box::new(
             super::request::<_, (), Vec<Product>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
                 e.context("Getting products by base product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn get_products_by_store(&self, store_id: StoreId) -> ApiFuture<Vec<Product>> {
+        let url = format!("{}/{}/by_store/{}", self.stores_url(), StqModel::Product.to_url(), store_id);
+        Box::new(
+            super::request::<_, (), Vec<Product>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
+                e.context("Getting products by store in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),
