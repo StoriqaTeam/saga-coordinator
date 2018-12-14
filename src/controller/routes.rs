@@ -15,8 +15,9 @@ pub enum Route {
     OrdersManualSetState { order_slug: OrderSlug },
     StoreModerate,
     StoreModeration(StoreId),
+    StoreDeactivate(StoreId),
     BaseProductModerate,
-    BaseProductDeactivate { base_product_id: BaseProductId },
+    BaseProductDeactivate(BaseProductId),
     BaseProductModeration(BaseProductId),
 }
 
@@ -48,6 +49,13 @@ pub fn create_route_parser() -> RouteParser<Route> {
             .map(Route::StoreModeration)
     });
 
+    router.add_route_with_params(r"^/stores/(\d+)/deactivate$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse::<StoreId>().ok())
+            .map(Route::StoreDeactivate)
+    });
+
     router.add_route(r"^/base_products/moderate$", || Route::BaseProductModerate);
 
     router.add_route_with_params(r"^/base_products/(\d+)/moderation$", |params| {
@@ -61,7 +69,7 @@ pub fn create_route_parser() -> RouteParser<Route> {
         params
             .get(0)
             .and_then(|string_id| string_id.parse::<BaseProductId>().ok())
-            .map(|base_product_id| Route::BaseProductDeactivate { base_product_id })
+            .map(Route::BaseProductDeactivate)
     });
 
     router.add_route(r"^/orders/update_state$", || Route::OrdersUpdateStateByBilling);

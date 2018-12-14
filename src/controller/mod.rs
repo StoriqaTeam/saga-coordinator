@@ -300,6 +300,14 @@ impl Controller for ControllerImpl {
                     .map_err(|(_, e)| FailureError::from(e.context("Error sending store to moderation occurred."))),
             ),
 
+            // POST /stores/<store_id>/deactivate
+            (&Method::Post, Some(Route::StoreDeactivate(store_id))) => serialize_future(
+                store_service
+                    .deactivate_store(store_id)
+                    .map(|(_, store)| store)
+                    .map_err(|(_, e)| FailureError::from(e.context("Error deactivating store occurred."))),
+            ),
+
             // POST /base_products/moderate
             (&Method::Post, Some(Route::BaseProductModerate)) => serialize_future(
                 parse_body::<BaseProductModerate>(req.body())
@@ -318,6 +326,14 @@ impl Controller for ControllerImpl {
                     .send_to_moderation_base_product(base_product_id)
                     .map(|(_, _)| ())
                     .map_err(|(_, e)| FailureError::from(e.context("Error sending base product to moderation occurred."))),
+            ),
+
+            // POST /base_products/<base_product_id>/deactivate
+            (&Method::Post, Some(Route::BaseProductDeactivate(base_product_id))) => serialize_future(
+                store_service
+                    .deactivate_base_product(base_product_id)
+                    .map(|(_, _)| ())
+                    .map_err(|(_, e)| FailureError::from(e.context("Error deactivating base product occurred."))),
             ),
 
             // Fallback
