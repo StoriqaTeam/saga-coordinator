@@ -69,7 +69,7 @@ pipeline:
     - cargo_git_pass
     commands:
     - git config --global url."https://$CARGO_GIT_USER:$CARGO_GIT_PASS@github.com/".insteadOf "https://github.com/"
-    - cargo build
+    - cargo build --locked
     when:
       event: push
   package:
