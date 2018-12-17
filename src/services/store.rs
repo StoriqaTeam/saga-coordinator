@@ -891,7 +891,7 @@ impl StoreService for StoreServiceImpl {
                 .and_then(move |(s, product)| {
                     orders_microservice
                         .delete_products_from_all_carts(
-                            None,
+                            Some(Initiator::Superadmin),
                             DeleteProductsFromCartsPayload {
                                 product_ids: vec![product_id],
                             },
