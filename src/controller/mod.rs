@@ -332,7 +332,7 @@ impl Controller for ControllerImpl {
             (&Method::Post, Some(Route::BaseProductDeactivate(base_product_id))) => serialize_future(
                 store_service
                     .deactivate_base_product(base_product_id)
-                    .map(|(_, _)| ())
+                    .map(|(_, base_product)| base_product)
                     .map_err(|(_, e)| FailureError::from(e.context("Error deactivating base product occurred."))),
             ),
 
@@ -340,7 +340,7 @@ impl Controller for ControllerImpl {
             (&Method::Post, Some(Route::ProductDeactivate(product_id))) => serialize_future(
                 store_service
                     .deactivate_product(product_id)
-                    .map(|(_, _)| ())
+                    .map(|(_, product)| product)
                     .map_err(|(_, e)| FailureError::from(e.context("Error deactivating product occurred."))),
             ),
 
