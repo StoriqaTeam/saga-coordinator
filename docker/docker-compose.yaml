@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile.saga
     container_name: saga
     working_dir: /app
-    command: cargo run
+    command: cargo run --locked
     volumes:
       - ..:/app
       - stq_cargo_cache:/usr/local/cargo
