@@ -21,11 +21,17 @@ pub trait StoresMicroservice {
     fn create_store(&self, initiator: Option<Initiator>, payload: NewStore) -> ApiFuture<Store>;
     fn use_coupon(&self, initiator: Initiator, coupon: CouponId, user: UserId) -> ApiFuture<UsedCoupon>;
     fn get(&self, store: StoreId, visibility: Visibility) -> ApiFuture<Option<Store>>;
+    fn get_base_product(&self, base_product_id: BaseProductId, visibility: Visibility) -> ApiFuture<Option<BaseProduct>>;
+    fn get_products_by_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<Vec<Product>>;
+    fn get_products_by_store(&self, store_id: StoreId) -> ApiFuture<Vec<Product>>;
     fn set_store_moderation_status(&self, payload: StoreModerate) -> ApiFuture<Store>;
     fn send_to_moderation(&self, store_id: StoreId) -> ApiFuture<Store>;
     fn set_moderation_status_base_product(&self, payload: BaseProductModerate) -> ApiFuture<BaseProduct>;
     fn send_to_moderation_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
     fn get_moderators(&self, initiator: Initiator) -> ApiFuture<Vec<UserId>>;
+    fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
+    fn deactivate_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store>;
+    fn deactivate_product(&self, initiator: Option<Initiator>, product_id: ProductId) -> ApiFuture<Product>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -34,6 +40,39 @@ pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceImpl<T> {
+    fn deactivate_product(&self, initiator: Option<Initiator>, product_id: ProductId) -> ApiFuture<Product> {
+        let url = format!("{}/{}/{}", self.stores_url(), StqModel::Product.to_url(), product_id);
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deactivate product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn deactivate_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store> {
+        let url = format!("{}/{}/{}", self.stores_url(), StqModel::Store.to_url(), store_id);
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deactivate store in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct> {
+        let url = format!("{}/{}/{}", self.stores_url(), StqModel::BaseProduct.to_url(), base_product_id);
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deactivate base product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
     fn delete_stores_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<StoresRole>> {
         let url = format!("{}/roles/by-id/{}", self.stores_url(), role_id);
         Box::new(
@@ -93,6 +132,7 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
             }),
         )
     }
+
     fn get(&self, store: StoreId, visibility: Visibility) -> ApiFuture<Option<Store>> {
         let url = format!(
             "{}/{}/{}?visibility={}",
@@ -104,6 +144,50 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         Box::new(
             super::request::<_, (), Option<Store>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
                 e.context("Getting store in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn get_base_product(&self, base_product_id: BaseProductId, visibility: Visibility) -> ApiFuture<Option<BaseProduct>> {
+        let url = format!(
+            "{}/{}/{}?visibility={}",
+            self.stores_url(),
+            StqModel::BaseProduct.to_url(),
+            base_product_id,
+            visibility
+        );
+        Box::new(
+            super::request::<_, (), Option<BaseProduct>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
+                e.context("Getting base product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn get_products_by_base_product(&self, base_product_id: BaseProductId) -> ApiFuture<Vec<Product>> {
+        let url = format!(
+            "{}/{}/by_base_product/{}",
+            self.stores_url(),
+            StqModel::Product.to_url(),
+            base_product_id
+        );
+        Box::new(
+            super::request::<_, (), Vec<Product>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
+                e.context("Getting products by base product in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn get_products_by_store(&self, store_id: StoreId) -> ApiFuture<Vec<Product>> {
+        let url = format!("{}/{}/by_store/{}", self.stores_url(), StqModel::Product.to_url(), store_id);
+        Box::new(
+            super::request::<_, (), Vec<Product>>(self.http_client.clone(), Method::Get, url, None, None).map_err(|e| {
+                e.context("Getting products by store in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),

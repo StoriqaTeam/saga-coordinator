@@ -28,6 +28,7 @@ pub trait OrdersMicroservice {
     fn revert_convert_cart(&self, initiator: Initiator, payload: ConvertCartRevert) -> ApiFuture<CartHash>;
     fn create_role(&self, initiator: Option<Initiator>, role: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>>;
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>>;
+    fn delete_products_from_all_carts(&self, initiator: Option<Initiator>, payload: DeleteProductsFromCartsPayload) -> ApiFuture<()>;
 }
 
 pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -36,6 +37,24 @@ pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceImpl<T> {
+    fn delete_products_from_all_carts(&self, initiator: Option<Initiator>, payload: DeleteProductsFromCartsPayload) -> ApiFuture<()> {
+        let url = format!("{}/{}/delete-products-from-all-carts", self.orders_url(), StqModel::Cart.to_url());
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            )
+            .map_err(|e| {
+                e.context("Deleting products from cart in orders microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>> {
         let url = format!("{}/roles/by-id/{}", self.orders_url(), role_id);
         Box::new(
@@ -46,6 +65,7 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
             }),
         )
     }
+
     fn create_role(&self, initiator: Option<Initiator>, payload: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>> {
         let url = format!("{}/{}", self.orders_url(), StqModel::Role.to_url());
         Box::new(
@@ -63,6 +83,7 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
             }),
         )
     }
+
     fn convert_cart(&self, payload: ConvertCartPayload) -> ApiFuture<Vec<Order>> {
         let url = format!("{}/{}/create_from_cart", self.orders_url(), StqModel::Order.to_url());
         Box::new(
