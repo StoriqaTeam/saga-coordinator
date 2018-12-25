@@ -669,7 +669,7 @@ impl AccountService for AccountServiceImpl {
             })
             .then(|res| match res {
                 Ok(_) => Ok((Box::new(self) as Box<AccountService>, ())),
-                Err(e) => Err((Box::new(self) as Box<AccountService>, e)),
+                Err(e) => Err((Box::new(self) as Box<AccountService>, parse_validation_errors(e, &["email"]))),
             });
 
         Box::new(res)
