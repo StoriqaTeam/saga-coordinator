@@ -16,6 +16,7 @@ use models::*;
 pub trait DeliveryMicroservice {
     fn delete_delivery_role(&self, initiator: Option<Initiator>, role_id: RoleId) -> ApiFuture<NewRole<DeliveryRole>>;
     fn create_delivery_role(&self, initiator: Option<Initiator>, payload: NewRole<DeliveryRole>) -> ApiFuture<NewRole<DeliveryRole>>;
+    fn upsert_shipping(&self, initiator: Option<Initiator>, base_product_id: BaseProductId, payload: NewShipping) -> ApiFuture<Shipping>;
 }
 
 pub struct DeliveryMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -47,6 +48,24 @@ impl<T: 'static + HttpClient + Clone> DeliveryMicroservice for DeliveryMicroserv
             )
             .map_err(|e| {
                 e.context("Creating role in delivery microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn upsert_shipping(&self, initiator: Option<Initiator>, base_product_id: BaseProductId, payload: NewShipping) -> ApiFuture<Shipping> {
+        let url = format!("{}/products/{}", self.delivery_url(), base_product_id);
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            )
+            .map_err(|e| {
+                e.context("Set shipping in delivery microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),

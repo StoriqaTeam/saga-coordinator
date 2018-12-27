@@ -34,12 +34,10 @@ use microservice::{
     BillingMicroserviceImpl, DeliveryMicroserviceImpl, NotificationsMicroserviceImpl, OrdersMicroserviceImpl, StoresMicroserviceImpl,
     UsersMicroserviceImpl, WarehousesMicroserviceImpl,
 };
-use models::{
-    BaseProductModerate, BillingOrdersVec, BuyNow, ConvertCart, EmailVerifyApply, NewStore, PasswordResetApply, ResetRequest,
-    SagaCreateProfile, StoreModerate, UpdateStatePayload, VerifyRequest,
-};
+use models::*;
 use sentry_integration::log_and_capture_error;
 use services::account::{AccountService, AccountServiceImpl};
+use services::delivery::{DeliveryService, DeliveryServiceImpl};
 use services::order::{OrderService, OrderServiceImpl};
 use services::store::{StoreService, StoreServiceImpl};
 
@@ -120,7 +118,7 @@ impl Controller for ControllerImpl {
         );
 
         let order_service = OrderServiceImpl::new(
-            config,
+            config.clone(),
             orders_microservice.clone(),
             stores_microservice.clone(),
             notifications_microservice.clone(),
@@ -128,6 +126,14 @@ impl Controller for ControllerImpl {
             billing_microservice.clone(),
             warehouses_microservice.clone(),
         );
+
+        let delivery_service = DeliveryServiceImpl::new(
+            config,
+            orders_microservice.clone(),
+            delivery_microservice.clone(),
+            stores_microservice.clone(),
+        );
+
         let path = req.path().to_string();
 
         let fut = match (&req.method().clone(), self.route_parser.test(req.path())) {
@@ -334,6 +340,18 @@ impl Controller for ControllerImpl {
                     .deactivate_base_product(base_product_id)
                     .map(|(_, base_product)| base_product)
                     .map_err(|(_, e)| FailureError::from(e.context("Error deactivating base product occurred."))),
+            ),
+
+            // POST /base_products/<base_product_id>/upsert-shipping
+            (&Method::Post, Some(Route::BaseProductUpsertShipping(base_product_id))) => serialize_future(
+                parse_body::<NewShipping>(req.body())
+                    .map_err(|e| FailureError::from(e.context("Parsing body failed, target: NewShipping").context(Error::Parse)))
+                    .and_then(move |payload| {
+                        delivery_service
+                            .upsert_shipping(base_product_id, payload)
+                            .map(|(_, shipping)| shipping)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error update shipping for base product occurred.")))
+                    }),
             ),
 
             // POST /products/<product_id>/deactivate

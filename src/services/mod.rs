@@ -1,4 +1,5 @@
 pub mod account;
+pub mod delivery;
 pub mod order;
 pub mod store;
 pub mod types;

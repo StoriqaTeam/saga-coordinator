@@ -41,7 +41,6 @@ pub trait StoreService {
     fn deactivate_product(self, product_id: ProductId) -> ServiceFuture<Box<StoreService>, Product>;
 }
 
-/// Attributes services, responsible for Attribute-related CRUD operations
 pub struct StoreServiceImpl {
     pub orders_microservice: Arc<OrdersMicroservice>,
     pub stores_microservice: Arc<StoresMicroservice>,
