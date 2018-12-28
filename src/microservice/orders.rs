@@ -29,6 +29,11 @@ pub trait OrdersMicroservice {
     fn create_role(&self, initiator: Option<Initiator>, role: RoleEntry<NewOrdersRole>) -> ApiFuture<RoleEntry<NewOrdersRole>>;
     fn delete_role(&self, initiator: Option<Initiator>, role_id: RoleEntryId) -> ApiFuture<RoleEntry<NewOrdersRole>>;
     fn delete_products_from_all_carts(&self, initiator: Option<Initiator>, payload: DeleteProductsFromCartsPayload) -> ApiFuture<()>;
+    fn delete_delivery_method_from_all_carts(
+        &self,
+        initiator: Option<Initiator>,
+        payload: DeleteDeliveryMethodFromCartsPayload,
+    ) -> ApiFuture<()>;
 }
 
 pub struct OrdersMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -49,6 +54,32 @@ impl<T: 'static + HttpClient + Clone> OrdersMicroservice for OrdersMicroserviceI
             )
             .map_err(|e| {
                 e.context("Deleting products from cart in orders microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn delete_delivery_method_from_all_carts(
+        &self,
+        initiator: Option<Initiator>,
+        payload: DeleteDeliveryMethodFromCartsPayload,
+    ) -> ApiFuture<()> {
+        let url = format!(
+            "{}/{}/delete-delivery-method-from-all-carts",
+            self.orders_url(),
+            StqModel::Cart.to_url()
+        );
+        Box::new(
+            super::request(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            )
+            .map_err(|e| {
+                e.context("Deleting delivery method from cart in orders microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),

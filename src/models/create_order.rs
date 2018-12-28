@@ -210,6 +210,11 @@ pub struct DeleteProductsFromCartsPayload {
     pub product_ids: Vec<ProductId>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DeleteDeliveryMethodFromCartsPayload {
+    pub product_ids: Vec<ProductId>,
+}
+
 impl From<ConvertCartWithConversionId> for ConvertCartPayload {
     fn from(other: ConvertCartWithConversionId) -> Self {
         let ConvertCartWithConversionId {
