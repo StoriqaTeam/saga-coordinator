@@ -706,18 +706,24 @@ impl AccountService for AccountServiceImpl {
                     Err(err) => Err((self, err)),
                 })
                 .and_then(move |(self_service, user, token)| {
-                    self_service
-                        .create_emarsys_contact(CreateEmarsysContactPayload {
-                            user_id: user.id,
-                            email: user.email,
-                            first_name: user.first_name,
-                            last_name: user.last_name,
-                            country: user.country,
-                        })
-                        .then(|res| match res {
-                            Ok((self_service, _)) => Ok((self_service, token)),
-                            Err((self_service, _)) => Ok((self_service, token)),
-                        })
+                    if user.emarsys_id.is_none() {
+                        future::Either::A(
+                            self_service
+                                .create_emarsys_contact(CreateEmarsysContactPayload {
+                                    user_id: user.id,
+                                    email: user.email,
+                                    first_name: user.first_name,
+                                    last_name: user.last_name,
+                                    country: user.country,
+                                })
+                                .then(|res| match res {
+                                    Ok((self_service, _)) => Ok((self_service, token)),
+                                    Err((self_service, _)) => Ok((self_service, token)),
+                                }),
+                        )
+                    } else {
+                        future::Either::B(future::ok((self_service, token)))
+                    }
                 })
                 .then(|res| match res {
                     Ok((self_service, token)) => Ok((Box::new(self_service) as Box<AccountService>, token)),
