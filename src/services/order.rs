@@ -469,8 +469,17 @@ impl OrderServiceImpl {
                         .into_future()
                 })
                 .and_then(move |order| {
+                    let states_from_paid = vec![
+                        OrderState::New,
+                        OrderState::PaymentAwaited,
+                        OrderState::TransactionPending,
+                        OrderState::AmountExpired,
+                    ];
+
                     if order.state == order_info.status {
                         // if this status already set, do not update
+                        Either::A(future::ok(None))
+                    } else if order_info.status == OrderState::Paid && !states_from_paid.contains(&order.state) {
                         Either::A(future::ok(None))
                     } else {
                         let payload: UpdateStatePayload = order_info.clone().into();
