@@ -336,6 +336,7 @@ impl OrderServiceImpl {
                     | OrderState::Sent
                     | OrderState::Delivered
                     | OrderState::Received
+                    | OrderState::Dispute
                     | OrderState::Complete => Box::new(self.notify_user_update_order(order.customer, order.slug, order.state))
                         as Box<Future<Item = (), Error = FailureError>>,
                 };
@@ -351,6 +352,7 @@ impl OrderServiceImpl {
                     | OrderState::Sent
                     | OrderState::Delivered
                     | OrderState::Received
+                    | OrderState::Dispute
                     | OrderState::Complete => Box::new(self.notify_store_update_order(order.store, order.slug, order.state))
                         as Box<Future<Item = (), Error = FailureError>>,
                 };
