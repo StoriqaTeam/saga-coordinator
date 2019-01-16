@@ -22,6 +22,8 @@ pub trait BillingMicroservice {
     fn create_role(&self, initiator: Option<Initiator>, payload: NewRole<BillingRole>) -> ApiFuture<NewRole<BillingRole>>;
     fn create_invoice(&self, initiator: Initiator, payload: CreateInvoice) -> ApiFuture<Invoice>;
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId>;
+    fn refund_order(&self, initiator: Initiator, order_slug: OrderSlug) -> ApiFuture<()>;
+    fn capture_order(&self, initiator: Initiator, order_slug: OrderSlug) -> ApiFuture<()>;
 }
 
 pub struct BillingMicroserviceImpl<T: HttpClient + Clone> {
@@ -137,6 +139,26 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
                         .context(Error::HttpClient)
                         .into()
                 }),
+        )
+    }
+    fn refund_order(&self, initiator: Initiator, order_slug: OrderSlug) -> ApiFuture<()> {
+        let url = format!("{}/orders/{}/refund", self.billing_url(), order_slug);
+        Box::new(
+            super::request::<_, (), ()>(self.http_client.clone(), Method::Post, url, None, Some(initiator.into())).map_err(move |e| {
+                e.context(format!("Refunding order {} in billing microservice failed", order_slug))
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+    fn capture_order(&self, initiator: Initiator, order_slug: OrderSlug) -> ApiFuture<()> {
+        let url = format!("{}/orders/{}/capture", self.billing_url(), order_slug);
+        Box::new(
+            super::request::<_, (), ()>(self.http_client.clone(), Method::Post, url, None, Some(initiator.into())).map_err(move |e| {
+                e.context(format!("Capturing order {} in billing microservice failed", order_slug))
+                    .context(Error::HttpClient)
+                    .into()
+            }),
         )
     }
 }

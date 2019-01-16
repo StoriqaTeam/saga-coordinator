@@ -500,12 +500,13 @@ impl OrderServiceImpl {
     fn set_state(
         self,
         order_slug: OrderSlug,
-        order_state: OrderState,
+        new_order_state: OrderState,
         track_id: Option<String>,
         comment: Option<String>,
         committer_role: CommitterRole,
     ) -> impl Future<Item = (Self, Option<Order>), Error = (Self, FailureError)> {
         let orders_microservice = self.orders_microservice.clone();
+        let billing_microservice = self.billing_microservice.clone();
         self.orders_microservice
             .get_order(None, OrderIdentifier::Slug(order_slug))
             .and_then(move |order| {
@@ -518,25 +519,44 @@ impl OrderServiceImpl {
                     .into_future()
             })
             .and_then(move |order| {
-                if order.state == order_state {
+                let old_order_state = order.state;
+                if old_order_state == new_order_state {
                     // if this status already set, do not update
-                    info!("order slug: {:?} status: {:?} already set, do not update", order_slug, order_state);
+                    info!(
+                        "order slug: {:?} status: {:?} already set, do not update",
+                        order_slug, new_order_state
+                    );
                     Either::A(future::ok(None))
                 } else {
                     info!(
                         "order slug: {:?} status: {:?} start request update on orders",
-                        order_slug, order_state
+                        order_slug, new_order_state
                     );
-                    Either::B(orders_microservice.set_order_state(
-                        None,
-                        OrderIdentifier::Slug(order_slug),
-                        UpdateStatePayload {
-                            state: order_state,
-                            comment,
-                            track_id,
-                            committer_role,
-                        },
-                    ))
+                    Either::B(
+                        orders_microservice
+                            .set_order_state(
+                                None,
+                                OrderIdentifier::Slug(order_slug),
+                                UpdateStatePayload {
+                                    state: new_order_state,
+                                    comment,
+                                    track_id,
+                                    committer_role,
+                                },
+                            )
+                            .and_then(move |result| {
+                                if new_order_state == OrderState::Cancelled && old_order_state == OrderState::Paid {
+                                    // order canceled buy seller - we need to do refund on billing
+                                    Either::A(billing_microservice.refund_order(Initiator::Superadmin, order_slug))
+                                } else if new_order_state == OrderState::InProcessing && old_order_state == OrderState::Paid {
+                                    // order confirmed buy seller - we need to do capture on billing
+                                    Either::A(billing_microservice.capture_order(Initiator::Superadmin, order_slug))
+                                } else {
+                                    Either::B(future::ok(()))
+                                }
+                                .map(|_| result)
+                            }),
+                    )
                 }
             })
             .then(|res| match res {
@@ -664,7 +684,7 @@ impl OrderService for OrderServiceImpl {
     }
 
     fn update_state_by_billing(self, orders_info: BillingOrdersVec) -> ServiceFuture<Box<OrderService>, ()> {
-        debug!("Updating orders status: {}", orders_info);
+        info!("Updating orders status: {} by billing microservices", orders_info);
         Box::new(
             self.update_orders_happy(orders_info)
                 .map(|(s, _)| (Box::new(s) as Box<OrderService>, ()))
@@ -680,7 +700,7 @@ impl OrderService for OrderServiceImpl {
         comment: Option<String>,
         committer_role: CommitterRole,
     ) -> ServiceFuture<Box<OrderService>, Option<Order>> {
-        debug!(
+        info!(
             "set order {} status '{}' with track {:?}, comment {:?}, committer: {}",
             order_slug, order_state, track_id, comment, committer_role
         );
