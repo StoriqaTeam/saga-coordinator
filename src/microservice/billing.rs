@@ -22,7 +22,7 @@ pub trait BillingMicroservice {
     fn create_role(&self, initiator: Option<Initiator>, payload: NewRole<BillingRole>) -> ApiFuture<NewRole<BillingRole>>;
     fn create_invoice(&self, initiator: Initiator, payload: CreateInvoice) -> ApiFuture<Invoice>;
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId>;
-    fn refund_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()>;
+    fn decline_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()>;
     fn capture_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()>;
 }
 
@@ -141,11 +141,11 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
                 }),
         )
     }
-    fn refund_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()> {
-        let url = format!("{}/orders/{}/refund", self.billing_url(), order_id);
+    fn decline_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()> {
+        let url = format!("{}/orders/{}/decline", self.billing_url(), order_id);
         Box::new(
             super::request::<_, (), ()>(self.http_client.clone(), Method::Post, url, None, Some(initiator.into())).map_err(move |e| {
-                e.context(format!("Refunding order {} in billing microservice failed", order_id))
+                e.context(format!("Declining order {} in billing microservice failed", order_id))
                     .context(Error::HttpClient)
                     .into()
             }),
