@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use stq_api::orders::{AddressFull, CouponInfo, DeliveryInfo, Order, ProductInfo};
-use stq_static_resources::{CommitterRole, Currency, OrderState};
+use stq_static_resources::{CommitterRole, Currency, CurrencyType, OrderState};
 use stq_types::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -22,6 +22,7 @@ pub struct ConvertCart {
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
     pub product_info: HashMap<ProductId, ProductInfo>,
     pub uuid: Uuid,
+    pub currency_type: Option<CurrencyType>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -203,6 +204,7 @@ pub struct ConvertCartPayload {
     pub delivery_info: HashMap<ProductId, DeliveryInfo>,
     pub product_info: HashMap<ProductId, ProductInfo>,
     pub uuid: Uuid,
+    pub currency_type: Option<CurrencyType>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -234,6 +236,7 @@ impl From<ConvertCartWithConversionId> for ConvertCartPayload {
             delivery_info: convert_cart.delivery_info,
             product_info: convert_cart.product_info,
             uuid: convert_cart.uuid,
+            currency_type: convert_cart.currency_type,
         }
     }
 }
