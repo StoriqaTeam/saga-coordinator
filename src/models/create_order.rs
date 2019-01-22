@@ -247,3 +247,25 @@ pub struct BuyNowPayload {
     #[serde(flatten)]
     pub buy_now: BuyNow,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct OrderPaymentStateRequest {
+    pub state: PaymentState,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PaymentState {
+    /// Order created and maybe paid by customer
+    Initial,
+    /// Store manager declined the order
+    Declined,
+    /// Store manager confirmed the order, money was captured
+    Captured,
+    /// Need money refund to customer
+    RefundNeeded,
+    /// Money was refunded to customer
+    Refunded,
+    /// Money was paid to seller
+    PaidToSeller,
+}

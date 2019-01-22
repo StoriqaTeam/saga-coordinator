@@ -2,6 +2,7 @@
 //! stuff like reading bodies, parsing params, forming a response.
 //! Basically it provides inputs to `Service` layer and converts outputs
 //! of `Service` layer to http responses
+pub mod requests;
 pub mod routes;
 
 use std::sync::Arc;
@@ -285,6 +286,17 @@ impl Controller for ControllerImpl {
                             .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual update occurred.")))
                     }),
             ),
+
+            (&Method::Post, Some(Route::OrdersSetPaymentState { order_id })) => serialize_future({
+                parse_body::<OrderPaymentStateRequest>(req.body())
+                    .map_err(move |e| FailureError::from(e.context("Parsing body failed, target: PaymentState").context(Error::Parse)))
+                    .and_then(move |payload| {
+                        order_service
+                            .manual_set_payment_state(order_id, payload.state)
+                            .map(|_| ())
+                            .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual payment state update occurred.")))
+                    })
+            }),
 
             // POST /stores/moderate
             (&Method::Post, Some(Route::StoreModerate)) => serialize_future(

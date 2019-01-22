@@ -24,6 +24,7 @@ pub trait BillingMicroservice {
     fn revert_create_invoice(&self, initiator: Initiator, saga_id: SagaId) -> ApiFuture<SagaId>;
     fn decline_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()>;
     fn capture_order(&self, initiator: Initiator, order_id: OrderId) -> ApiFuture<()>;
+    fn set_payment_state(&self, initiator: Option<Initiator>, order_id: OrderId, payload: PaymentState) -> ApiFuture<()>;
 }
 
 pub struct BillingMicroserviceImpl<T: HttpClient + Clone> {
@@ -156,6 +157,17 @@ impl<T: 'static + HttpClient + Clone> BillingMicroservice for BillingMicroservic
         Box::new(
             super::request::<_, (), ()>(self.http_client.clone(), Method::Post, url, None, Some(initiator.into())).map_err(move |e| {
                 e.context(format!("Capturing order {} in billing microservice failed", order_id))
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn set_payment_state(&self, initiator: Option<Initiator>, order_id: OrderId, payload: PaymentState) -> ApiFuture<()> {
+        let url = format!("{}/orders/{}/set_payment_state", self.billing_url(), order_id);
+        Box::new(
+            super::request::<_, PaymentState, ()>(self.http_client.clone(), Method::Post, url, Some(payload), None).map_err(move |e| {
+                e.context(format!("Set payment state order {} in billing microservice failed", order_id))
                     .context(Error::HttpClient)
                     .into()
             }),
