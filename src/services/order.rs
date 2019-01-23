@@ -11,7 +11,7 @@ use stq_api::orders::Order;
 use stq_static_resources::{
     CommitterRole, EmailUser, OrderCreateForStore, OrderCreateForUser, OrderState, OrderUpdateStateForStore, OrderUpdateStateForUser,
 };
-use stq_types::{ConversionId, CouponId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
+use stq_types::{ConversionId, CouponId, OrderId, OrderIdentifier, OrderSlug, Quantity, SagaId, StoreId, UserId};
 
 use super::parse_validation_errors;
 use config;
@@ -35,6 +35,7 @@ pub trait OrderService {
         comment: Option<String>,
         committer_role: CommitterRole,
     ) -> ServiceFuture<Box<OrderService>, Option<Order>>;
+    fn manual_set_payment_state(self, order_id: OrderId, payload: OrderPaymentStateRequest) -> ServiceFuture<Box<OrderService>, ()>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -444,6 +445,14 @@ impl OrderServiceImpl {
             })
     }
 
+    fn set_payment_state_happy(
+        self,
+        order_id: OrderId,
+        payload: OrderPaymentStateRequest,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        self.set_payment_state(order_id, payload)
+    }
+
     fn update_orders(self, orders_info: BillingOrdersVec) -> impl Future<Item = (Self, Vec<Option<Order>>), Error = (Self, FailureError)> {
         debug!("Updating orders status: {}", orders_info);
 
@@ -562,6 +571,19 @@ impl OrderServiceImpl {
             })
             .then(|res| match res {
                 Ok(order) => Ok((self, order)),
+                Err(e) => Err((self, e)),
+            })
+    }
+
+    fn set_payment_state(
+        self,
+        order_id: OrderId,
+        payload: OrderPaymentStateRequest,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        self.billing_microservice
+            .set_payment_state(None, order_id, payload)
+            .then(|res| match res {
+                Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
             })
     }
@@ -716,6 +738,15 @@ impl OrderService for OrderServiceImpl {
         );
         Box::new(
             self.set_state_happy(order_slug, order_state, track_id, comment, committer_role)
+                .map(|(s, o)| (Box::new(s) as Box<OrderService>, o))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e))),
+        )
+    }
+
+    fn manual_set_payment_state(self, order_id: OrderId, payload: OrderPaymentStateRequest) -> ServiceFuture<Box<OrderService>, ()> {
+        info!("set order {} payment status '{:?}'", order_id, payload.state);
+        Box::new(
+            self.set_payment_state_happy(order_id, payload)
                 .map(|(s, o)| (Box::new(s) as Box<OrderService>, o))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e))),
         )
