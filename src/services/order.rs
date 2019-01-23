@@ -556,11 +556,17 @@ impl OrderServiceImpl {
                             )
                             .and_then(move |result| {
                                 if new_order_state == OrderState::Cancelled && old_order_state == OrderState::Paid {
-                                    // order canceled buy seller - we need to do refund on billing
+                                    // order canceled by seller - we need to do refund on billing
                                     Either::A(billing_microservice.decline_order(Initiator::Superadmin, order_id))
                                 } else if new_order_state == OrderState::InProcessing && old_order_state == OrderState::Paid {
-                                    // order confirmed buy seller - we need to do capture on billing
+                                    // order confirmed by seller - we need to do capture on billing
                                     Either::A(billing_microservice.capture_order(Initiator::Superadmin, order_id))
+                                } else if new_order_state == OrderState::Complete {
+                                    // order completed by seller or buyer - we need to send money to seller on billing
+                                    let payload = OrderPaymentStateRequest {
+                                        state: PaymentState::PaymentToSellerNeeded,
+                                    };
+                                    Either::A(billing_microservice.set_payment_state(Some(Initiator::Superadmin), order_id, payload))
                                 } else {
                                     Either::B(future::ok(()))
                                 }
