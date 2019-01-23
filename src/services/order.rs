@@ -35,7 +35,7 @@ pub trait OrderService {
         comment: Option<String>,
         committer_role: CommitterRole,
     ) -> ServiceFuture<Box<OrderService>, Option<Order>>;
-    fn manual_set_payment_state(self, order_id: OrderId, order_state: PaymentState) -> ServiceFuture<Box<OrderService>, ()>;
+    fn manual_set_payment_state(self, order_id: OrderId, payload: OrderPaymentStateRequest) -> ServiceFuture<Box<OrderService>, ()>;
 }
 
 /// Orders services, responsible for Creating orders
@@ -448,9 +448,9 @@ impl OrderServiceImpl {
     fn set_payment_state_happy(
         self,
         order_id: OrderId,
-        order_state: PaymentState,
+        payload: OrderPaymentStateRequest,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
-        self.set_payment_state(order_id, order_state)
+        self.set_payment_state(order_id, payload)
     }
 
     fn update_orders(self, orders_info: BillingOrdersVec) -> impl Future<Item = (Self, Vec<Option<Order>>), Error = (Self, FailureError)> {
@@ -578,10 +578,10 @@ impl OrderServiceImpl {
     fn set_payment_state(
         self,
         order_id: OrderId,
-        new_order_payment_state: PaymentState,
+        payload: OrderPaymentStateRequest,
     ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         self.billing_microservice
-            .set_payment_state(None, order_id, new_order_payment_state)
+            .set_payment_state(None, order_id, payload)
             .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(e) => Err((self, e)),
@@ -743,10 +743,10 @@ impl OrderService for OrderServiceImpl {
         )
     }
 
-    fn manual_set_payment_state(self, order_id: OrderId, order_state: PaymentState) -> ServiceFuture<Box<OrderService>, ()> {
-        info!("set order {} payment status '{:?}'", order_id, order_state);
+    fn manual_set_payment_state(self, order_id: OrderId, payload: OrderPaymentStateRequest) -> ServiceFuture<Box<OrderService>, ()> {
+        info!("set order {} payment status '{:?}'", order_id, payload.state);
         Box::new(
-            self.set_payment_state_happy(order_id, order_state)
+            self.set_payment_state_happy(order_id, payload)
                 .map(|(s, o)| (Box::new(s) as Box<OrderService>, o))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<OrderService>, e))),
         )

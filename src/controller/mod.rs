@@ -289,10 +289,15 @@ impl Controller for ControllerImpl {
 
             (&Method::Post, Some(Route::OrdersSetPaymentState { order_id })) => serialize_future({
                 parse_body::<OrderPaymentStateRequest>(req.body())
-                    .map_err(move |e| FailureError::from(e.context("Parsing body failed, target: PaymentState").context(Error::Parse)))
+                    .map_err(move |e| {
+                        FailureError::from(
+                            e.context("Parsing body failed, target: OrderPaymentStateRequest")
+                                .context(Error::Parse),
+                        )
+                    })
                     .and_then(move |payload| {
                         order_service
-                            .manual_set_payment_state(order_id, payload.state)
+                            .manual_set_payment_state(order_id, payload)
                             .map(|_| ())
                             .map_err(|(_, e)| FailureError::from(e.context("Error during orders manual payment state update occurred.")))
                     })
