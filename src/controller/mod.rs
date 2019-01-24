@@ -24,8 +24,8 @@ use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
 use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
-use stq_http::request_util::{Currency as CurrencyHeader, FiatCurrency as FiatCurrencyHeader};
 use stq_http::request_util::RequestTimeout as RequestTimeoutHeader;
+use stq_http::request_util::{Currency as CurrencyHeader, FiatCurrency as FiatCurrencyHeader};
 use stq_router::RouteParser;
 
 use self::routes::Route;
