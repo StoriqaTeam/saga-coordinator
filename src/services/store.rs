@@ -228,11 +228,11 @@ impl StoreServiceImpl {
         Box::new(res)
     }
 
-    fn create_merchant(self, store_id: StoreId, store_country: Option<String>) -> ServiceFuture<Self, Merchant> {
+    fn create_merchant(self, store_id: StoreId, store_country_code: Option<String>) -> ServiceFuture<Self, Merchant> {
         debug!("Creating merchant for store_id: {}", store_id);
         let payload = CreateStoreMerchantPayload {
             id: store_id,
-            country: store_country,
+            country_code: store_country_code,
         };
 
         // Create store role
@@ -282,7 +282,7 @@ impl StoreServiceImpl {
                     let store_id = store.id;
                     s.create_delivery_role(user_id, store_id).map(|(s, _)| (s, store))
                 })
-                .and_then(|(s, store)| s.create_merchant(store.id, store.country.clone()).map(|(s, _)| (s, store))),
+                .and_then(|(s, store)| s.create_merchant(store.id, store.country_code.clone()).map(|(s, _)| (s, store))),
         )
     }
 

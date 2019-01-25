@@ -30,6 +30,7 @@ pub struct Store {
     pub slogan: Option<String>,
     pub rating: f64,
     pub country: Option<String>,
+    pub country_code: Option<String>,
     pub product_categories: Option<serde_json::Value>,
     pub status: ModerationStatus,
     pub administrative_area_level_1: Option<String>,
@@ -60,6 +61,7 @@ pub struct NewStore {
     pub default_language: String,
     pub slogan: Option<String>,
     pub country: Option<String>,
+    pub country_code: Option<String>,
     pub administrative_area_level_1: Option<String>,
     pub administrative_area_level_2: Option<String>,
     pub locality: Option<String>,
@@ -75,7 +77,7 @@ pub struct NewStore {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateStoreMerchantPayload {
     pub id: StoreId,
-    pub country: Option<String>,
+    pub country_code: Option<String>,
 }
 
 pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
