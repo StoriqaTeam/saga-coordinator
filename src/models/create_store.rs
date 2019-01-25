@@ -75,6 +75,7 @@ pub struct NewStore {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateStoreMerchantPayload {
     pub id: StoreId,
+    pub country: Option<String>,
 }
 
 pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
