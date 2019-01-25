@@ -24,8 +24,8 @@ use stq_http::errors::ErrorMessageWrapper;
 use stq_http::request_util::parse_body;
 use stq_http::request_util::serialize_future;
 use stq_http::request_util::CorrelationToken as CorrelationTokenHeader;
-use stq_http::request_util::Currency as CurrencyHeader;
 use stq_http::request_util::RequestTimeout as RequestTimeoutHeader;
+use stq_http::request_util::{Currency as CurrencyHeader, FiatCurrency as FiatCurrencyHeader};
 use stq_router::RouteParser;
 
 use self::routes::Route;
@@ -416,5 +416,6 @@ fn default_headers(request_headers: &Headers) -> Headers {
 fn stores_headers(request_headers: &Headers) -> Headers {
     let mut stores_headers = default_headers(request_headers);
     stores_headers.set(CurrencyHeader("STQ".to_string()));
+    stores_headers.set(FiatCurrencyHeader("USD".to_string()));
     stores_headers
 }
