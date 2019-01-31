@@ -543,8 +543,25 @@ impl OrderServiceImpl {
                         order_slug, new_order_state
                     );
                     Either::B(
-                        orders_microservice
-                            .set_order_state(
+                        {
+                            if new_order_state == OrderState::Cancelled && old_order_state == OrderState::Paid {
+                                // order canceled by seller - we need to do refund on billing
+                                Either::A(billing_microservice.decline_order(Initiator::Superadmin, order_id))
+                            } else if new_order_state == OrderState::InProcessing && old_order_state == OrderState::Paid {
+                                // order confirmed by seller - we need to do capture on billing
+                                Either::A(billing_microservice.capture_order(Initiator::Superadmin, order_id))
+                            } else if new_order_state == OrderState::Complete {
+                                // order completed by seller or buyer - we need to send money to seller on billing
+                                let payload = OrderPaymentStateRequest {
+                                    state: PaymentState::PaymentToSellerNeeded,
+                                };
+                                Either::A(billing_microservice.set_payment_state(Some(Initiator::Superadmin), order_id, payload))
+                            } else {
+                                Either::B(future::ok(()))
+                            }
+                        }
+                        .and_then(move |_| {
+                            orders_microservice.set_order_state(
                                 None,
                                 OrderIdentifier::Slug(order_slug),
                                 UpdateStatePayload {
@@ -554,24 +571,7 @@ impl OrderServiceImpl {
                                     committer_role,
                                 },
                             )
-                            .and_then(move |result| {
-                                if new_order_state == OrderState::Cancelled && old_order_state == OrderState::Paid {
-                                    // order canceled by seller - we need to do refund on billing
-                                    Either::A(billing_microservice.decline_order(Initiator::Superadmin, order_id))
-                                } else if new_order_state == OrderState::InProcessing && old_order_state == OrderState::Paid {
-                                    // order confirmed by seller - we need to do capture on billing
-                                    Either::A(billing_microservice.capture_order(Initiator::Superadmin, order_id))
-                                } else if new_order_state == OrderState::Complete {
-                                    // order completed by seller or buyer - we need to send money to seller on billing
-                                    let payload = OrderPaymentStateRequest {
-                                        state: PaymentState::PaymentToSellerNeeded,
-                                    };
-                                    Either::A(billing_microservice.set_payment_state(Some(Initiator::Superadmin), order_id, payload))
-                                } else {
-                                    Either::B(future::ok(()))
-                                }
-                                .map(|_| result)
-                            }),
+                        }),
                     )
                 }
             })
