@@ -1,3 +1,4 @@
+use stq_static_resources::Currency;
 use stq_types::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -28,6 +29,7 @@ pub struct NewProducts {
     pub delivery_from: Alpha3,
     pub deliveries_to: Vec<Alpha3>,
     pub shipping: ShippingVariant,
+    pub currency: Currency,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -59,6 +61,7 @@ pub struct Products {
     pub price: Option<ProductPrice>,
     pub deliveries_to: Vec<Alpha3>,
     pub shipping: ShippingVariant,
+    pub currency: Currency,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
