@@ -16,6 +16,7 @@ pub enum Route {
     StoreModerate,
     StoreModeration(StoreId),
     StoreDeactivate(StoreId),
+    BaseProductUpdate(BaseProductId),
     BaseProductModerate,
     BaseProductDeactivate(BaseProductId),
     BaseProductUpsertShipping(BaseProductId),
@@ -73,6 +74,13 @@ pub fn create_route_parser() -> RouteParser<Route> {
             .get(0)
             .and_then(|string_id| string_id.parse::<BaseProductId>().ok())
             .map(Route::BaseProductDeactivate)
+    });
+
+    router.add_route_with_params(r"^/base_products/(\d+)/update$", |params| {
+        params
+            .get(0)
+            .and_then(|string_id| string_id.parse::<BaseProductId>().ok())
+            .map(Route::BaseProductUpdate)
     });
 
     router.add_route_with_params(r"^/base_products/(\d+)/upsert-shipping$", |params| {

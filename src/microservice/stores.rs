@@ -32,6 +32,12 @@ pub trait StoresMicroservice {
     fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
     fn deactivate_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store>;
     fn deactivate_product(&self, initiator: Option<Initiator>, product_id: ProductId) -> ApiFuture<Product>;
+    fn update_base_product(
+        &self,
+        initiator: Option<Initiator>,
+        base_product_id: BaseProductId,
+        payload: UpdateBaseProduct,
+    ) -> ApiFuture<BaseProduct>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -274,6 +280,30 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         Box::new(
             super::request::<_, (), Vec<UserId>>(self.http_client.clone(), Method::Get, url, None, Some(initiator.into())).map_err(|e| {
                 e.context("Get moderators in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn update_base_product(
+        &self,
+        initiator: Option<Initiator>,
+        base_product_id: BaseProductId,
+        payload: UpdateBaseProduct,
+    ) -> ApiFuture<BaseProduct> {
+        let url = format!("{}/{}/{}", self.stores_url(), StqModel::BaseProduct.to_url(), base_product_id);
+
+        Box::new(
+            super::request::<_, UpdateBaseProduct, BaseProduct>(
+                self.http_client.clone(),
+                Method::Put,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            )
+            .map_err(|e| {
+                e.context("Update base product in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),

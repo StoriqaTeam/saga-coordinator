@@ -39,6 +39,12 @@ pub trait StoreService {
     fn deactivate_store(self, store: StoreId) -> ServiceFuture<Box<StoreService>, Store>;
     /// Deactivate product
     fn deactivate_product(self, product_id: ProductId) -> ServiceFuture<Box<StoreService>, Product>;
+    /// Update base product
+    fn update_base_product(
+        self,
+        base_product_id: BaseProductId,
+        payload: UpdateBaseProduct,
+    ) -> ServiceFuture<Box<StoreService>, BaseProduct>;
 }
 
 pub struct StoreServiceImpl {
@@ -711,6 +717,21 @@ impl StoreServiceImpl {
                 Err(err) => Err((self, err)),
             })
     }
+
+    fn after_base_product_update(self, base_product_id: BaseProductId) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let stores_microservice = self.stores_microservice.clone();
+        let orders_microservice = self.orders_microservice.clone();
+        stores_microservice
+            .get_products_by_base_product(base_product_id)
+            .map(|products| DeleteProductsFromCartsPayload {
+                product_ids: products.into_iter().map(|p| p.id).collect(),
+            })
+            .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload))
+            .then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(err) => Err((self, err)),
+            })
+    }
 }
 
 fn is_status_change_requires_to_delete_product(initial_status: ModerationStatus, status: ModerationStatus) -> bool {
@@ -904,6 +925,25 @@ impl StoreService for StoreServiceImpl {
                         })
                 })
                 .map(|(s, product)| (Box::new(s) as Box<StoreService>, product))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+
+    /// Update base product
+    fn update_base_product(
+        self,
+        base_product_id: BaseProductId,
+        payload: UpdateBaseProduct,
+    ) -> ServiceFuture<Box<StoreService>, BaseProduct> {
+        Box::new(
+            self.stores_microservice
+                .update_base_product(None, base_product_id, payload)
+                .then(move |res| match res {
+                    Ok(base_product) => Ok((self, base_product)),
+                    Err(err) => Err((self, err)),
+                })
+                .and_then(move |(s, base_product)| s.after_base_product_update(base_product_id).map(|(s, _)| (s, base_product)))
+                .map(|(s, base_product)| (Box::new(s) as Box<StoreService>, base_product))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }

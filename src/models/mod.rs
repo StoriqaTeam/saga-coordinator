@@ -1,3 +1,4 @@
+pub mod base_product;
 pub mod create_order;
 pub mod create_profile;
 pub mod create_store;
@@ -7,6 +8,7 @@ pub mod notifications;
 pub mod roles;
 pub mod visibility;
 
+pub use self::base_product::*;
 pub use self::create_order::*;
 pub use self::create_profile::*;
 pub use self::create_store::*;
