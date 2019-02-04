@@ -359,6 +359,18 @@ impl Controller for ControllerImpl {
                     .map_err(|(_, e)| FailureError::from(e.context("Error deactivating base product occurred."))),
             ),
 
+            // POST /base_products/<base_product_id>/update
+            (&Method::Post, Some(Route::BaseProductUpdate(base_product_id))) => serialize_future(
+                parse_body::<UpdateBaseProduct>(req.body())
+                    .map_err(|e| FailureError::from(e.context("Parsing body failed, target: UpdateBaseProduct").context(Error::Parse)))
+                    .and_then(move |base_product_update| {
+                        store_service
+                            .update_base_product(base_product_id, base_product_update)
+                            .map(|(_, base_product)| base_product)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error updating base product occurred.")))
+                    }),
+            ),
+
             // POST /base_products/<base_product_id>/upsert-shipping
             (&Method::Post, Some(Route::BaseProductUpsertShipping(base_product_id))) => serialize_future(
                 parse_body::<NewShipping>(req.body())
