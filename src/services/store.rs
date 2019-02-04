@@ -731,6 +731,7 @@ impl StoreServiceImpl {
                 Ok(_) => Ok((self, ())),
                 Err(err) => Err((self, err)),
             })
+            .or_else(|(s, e)| future::err((s, parse_validation_errors(e, &["base_product"]))))
     }
 }
 
