@@ -459,7 +459,7 @@ impl OrderServiceImpl {
         let mut orders_futures = vec![];
         for order_info in orders_info.0 {
             match &order_info.status {
-                OrderState::AmountExpired | OrderState::TransactionPending => continue, // do not set these invoice statuses to orders
+                OrderState::TransactionPending => continue, // do not set these invoice statuses to orders
                 _ => {}
             }
 
