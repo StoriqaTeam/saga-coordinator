@@ -729,7 +729,11 @@ impl StoreServiceImpl {
                 product_ids: products.into_iter().map(|p| p.id).collect(),
             })
             .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload))
-            .and_then(move |_| delivery_microservice.delete_shipping_by_base_product(Some(Initiator::Superadmin), base_product_id))
+            .and_then(move |_| {
+                delivery_microservice
+                    .delete_shipping_by_base_product(Some(Initiator::Superadmin), base_product_id)
+                    .then(|_| Ok(()))
+            })
             .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(err) => Err((self, err)),
