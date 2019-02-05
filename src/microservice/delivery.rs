@@ -27,7 +27,7 @@ pub struct DeliveryMicroserviceImpl<T: 'static + HttpClient + Clone> {
 
 impl<T: 'static + HttpClient + Clone> DeliveryMicroservice for DeliveryMicroserviceImpl<T> {
     fn delete_shipping_by_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<()> {
-        let url = format!("{}/{}/{}", self.delivery_url(), StqModel::BaseProduct.to_url(), base_product_id);
+        let url = format!("{}/{}/{}", self.delivery_url(), StqModel::Product.to_url(), base_product_id);
         Box::new(
             super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
                 e.context("Deleting shipping by base product in delivery microservice failed.")
