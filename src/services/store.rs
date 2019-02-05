@@ -721,12 +721,15 @@ impl StoreServiceImpl {
     fn after_base_product_update(self, base_product_id: BaseProductId) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let stores_microservice = self.stores_microservice.clone();
         let orders_microservice = self.orders_microservice.clone();
+        let delivery_microservice = self.delivery_microservice.clone();
+
         stores_microservice
             .get_products_by_base_product(base_product_id)
             .map(|products| DeleteProductsFromCartsPayload {
                 product_ids: products.into_iter().map(|p| p.id).collect(),
             })
             .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload))
+            .and_then(move |_| delivery_microservice.delete_shipping_by_base_product(Some(Initiator::Superadmin), base_product_id))
             .then(|res| match res {
                 Ok(_) => Ok((self, ())),
                 Err(err) => Err((self, err)),
