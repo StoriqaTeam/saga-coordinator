@@ -303,7 +303,7 @@ impl StoreServiceImpl {
         let delivery_microservice = self.delivery_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
-                CreateStoreOperationStage::StoreCreationComplete(store_id) => {
+                CreateStoreOperationStage::StoreCreationStart(store_id) => {
                     debug!("Reverting store, store_id: {}", store_id);
                     Box::new(
                         stores_microservice
@@ -312,7 +312,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::WarehousesRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::WarehousesRoleSetStart(role_id) => {
                     debug!("Reverting warehouses role, user_id: {}", role_id);
                     let mut headers = Headers::new();
                     headers.set(Authorization("1".to_string())); // only super admin delete user role
@@ -324,7 +324,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::OrdersRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::OrdersRoleSetStart(role_id) => {
                     debug!("Reverting orders role, user_id: {}", role_id);
                     Box::new(
                         orders_microservice
@@ -333,7 +333,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::BillingRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::BillingRoleSetStart(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
 
                     Box::new(
@@ -343,7 +343,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::DeliveryRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::DeliveryRoleSetStart(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
                     Box::new(
                         delivery_microservice
@@ -352,7 +352,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::BillingCreateMerchantComplete(store_id) => {
+                CreateStoreOperationStage::BillingCreateMerchantStart(store_id) => {
                     debug!("Reverting merchant, store_id: {}", store_id);
 
                     Box::new(
