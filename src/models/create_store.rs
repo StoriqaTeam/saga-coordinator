@@ -4,7 +4,7 @@ use serde_json;
 use uuid::Uuid;
 
 use stq_static_resources::ModerationStatus;
-use stq_types::{RoleEntryId, RoleId, StoreId, UserId};
+use stq_types::{RoleEntryId, RoleId, SagaId, StoreId, UserId};
 
 /// Payload for querying stores
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,6 +39,7 @@ pub struct Store {
     pub political: Option<String>,
     pub postal_code: Option<String>,
     pub route: Option<String>,
+    pub saga_id: Option<String>,
     pub street_number: Option<String>,
     pub place_id: Option<String>,
 }
@@ -68,9 +69,9 @@ pub struct NewStore {
     pub political: Option<String>,
     pub postal_code: Option<String>,
     pub route: Option<String>,
+    pub saga_id: Option<String>,
     pub street_number: Option<String>,
     pub place_id: Option<String>,
-    pub saga_id: Option<String>,
     pub uuid: Uuid,
 }
 
@@ -84,7 +85,7 @@ pub type CreateStoreOperationLog = Vec<CreateStoreOperationStage>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CreateStoreOperationStage {
-    StoreCreationStart(UserId),
+    StoreCreationStart(SagaId),
     StoreCreationComplete(StoreId),
     WarehousesRoleSetStart(RoleEntryId),
     WarehousesRoleSetComplete(RoleEntryId),
