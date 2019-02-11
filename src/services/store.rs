@@ -368,7 +368,7 @@ impl StoreServiceImpl {
 
         fut.then(|res| match res {
             Ok(_) => Ok((self, ())),
-            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+            Err(_) => Err((self, format_err!("Order service create_revert error occurred."))),
         })
     }
 
