@@ -400,7 +400,7 @@ impl AccountServiceImpl {
 
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
-                CreateProfileOperationStage::AccountCreationComplete(saga_id) => {
+                CreateProfileOperationStage::AccountCreationStart(saga_id) => {
                     debug!("Reverting user, saga_id: {}", saga_id);
                     Box::new(
                         users_microservice
@@ -409,7 +409,7 @@ impl AccountServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateProfileOperationStage::UsersRoleSetComplete(role_id) => {
+                CreateProfileOperationStage::UsersRoleSetStart(role_id) => {
                     debug!("Reverting users role, role_id: {}", role_id);
                     let mut headers = Headers::new();
                     headers.set(Authorization("1".to_string())); // only super admin delete user role
@@ -421,7 +421,7 @@ impl AccountServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateProfileOperationStage::StoreRoleSetComplete(role_id) => {
+                CreateProfileOperationStage::StoreRoleSetStart(role_id) => {
                     debug!("Reverting stores users role, role_id: {}", role_id);
 
                     Box::new(
@@ -431,7 +431,7 @@ impl AccountServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateProfileOperationStage::BillingRoleSetComplete(role_id) => {
+                CreateProfileOperationStage::BillingRoleSetStart(role_id) => {
                     debug!("Reverting billing role, role_id: {}", role_id);
 
                     Box::new(
@@ -441,7 +441,7 @@ impl AccountServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateProfileOperationStage::DeliveryRoleSetComplete(role_id) => {
+                CreateProfileOperationStage::DeliveryRoleSetStart(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
                     Box::new(
                         delivery_microservice
@@ -450,7 +450,7 @@ impl AccountServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateProfileOperationStage::BillingCreateMerchantComplete(user_id) => {
+                CreateProfileOperationStage::BillingCreateMerchantStart(user_id) => {
                     debug!("Reverting merchant, user_id: {}", user_id);
                     Box::new(
                         billing_microservice
@@ -465,7 +465,7 @@ impl AccountServiceImpl {
 
         fut.then(|res| match res {
             Ok(_) => Ok((self, ())),
-            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+            Err(_) => Err((self, format_err!("Order service create_revert error occurred."))),
         })
     }
 }

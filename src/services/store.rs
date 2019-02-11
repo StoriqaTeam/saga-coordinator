@@ -9,7 +9,9 @@ use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
 
-use stq_types::{BaseProductId, BillingRole, DeliveryRole, OrderRole, ProductId, RoleEntryId, RoleId, StoreId, UserId, WarehouseRole};
+use stq_types::{
+    BaseProductId, BillingRole, DeliveryRole, OrderRole, ProductId, RoleEntryId, RoleId, SagaId, StoreId, UserId, WarehouseRole,
+};
 
 use stq_static_resources::{
     BaseProductModerationStatusForModerator, BaseProductModerationStatusForUser, EmailUser, ModerationStatus,
@@ -84,17 +86,22 @@ impl StoreServiceImpl {
         }
     }
 
-    fn create_store(self, input: &NewStore) -> ServiceFuture<Self, Store> {
+    fn create_store(self, input: &NewStore, saga_id: SagaId) -> ServiceFuture<Self, Store> {
         // Create Store
         debug!("Creating store, input: {:?}", input);
 
         let log = self.log.clone();
-        let user_id = input.user_id;
-        log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(user_id));
+        log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationStart(saga_id));
 
         let res = self
             .stores_microservice
-            .create_store(None, input.clone())
+            .create_store(
+                None,
+                NewStore {
+                    saga_id: Some(saga_id.to_string()),
+                    ..input.clone()
+                },
+            )
             .and_then(move |store| {
                 log.lock().unwrap().push(CreateStoreOperationStage::StoreCreationComplete(store.id));
                 Ok(store)
@@ -266,8 +273,9 @@ impl StoreServiceImpl {
 
     // Contains happy path for Store creation
     fn create_happy(self, input: &NewStore) -> ServiceFuture<Self, Store> {
+        let saga_id = SagaId::new();
         Box::new(
-            self.create_store(&input)
+            self.create_store(&input, saga_id)
                 .and_then(|(s, store)| {
                     let user_id = store.user_id;
                     let store_id = store.id;
@@ -303,16 +311,17 @@ impl StoreServiceImpl {
         let delivery_microservice = self.delivery_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
-                CreateStoreOperationStage::StoreCreationComplete(store_id) => {
-                    debug!("Reverting store, store_id: {}", store_id);
+                // TODO: probably pass saga ID on store creation and delete store by saga ID here (requires changes in saga-coordinator and stores microservices).
+                CreateStoreOperationStage::StoreCreationStart(saga_id) => {
+                    debug!("Reverting store, saga_id: {}", saga_id);
                     Box::new(
                         stores_microservice
-                            .delete_store(Some(Initiator::Superadmin), store_id)
+                            .deactivate_store_by_saga_id(Some(Initiator::Superadmin), saga_id)
                             .then(|_| Ok(())),
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::WarehousesRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::WarehousesRoleSetStart(role_id) => {
                     debug!("Reverting warehouses role, user_id: {}", role_id);
                     let mut headers = Headers::new();
                     headers.set(Authorization("1".to_string())); // only super admin delete user role
@@ -324,7 +333,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::OrdersRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::OrdersRoleSetStart(role_id) => {
                     debug!("Reverting orders role, user_id: {}", role_id);
                     Box::new(
                         orders_microservice
@@ -333,7 +342,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::BillingRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::BillingRoleSetStart(role_id) => {
                     debug!("Reverting billing role, user_id: {}", role_id);
 
                     Box::new(
@@ -343,7 +352,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::DeliveryRoleSetComplete(role_id) => {
+                CreateStoreOperationStage::DeliveryRoleSetStart(role_id) => {
                     debug!("Reverting delivery role, role_id: {}", role_id);
                     Box::new(
                         delivery_microservice
@@ -352,7 +361,7 @@ impl StoreServiceImpl {
                     ) as Box<Future<Item = (), Error = ()>>
                 }
 
-                CreateStoreOperationStage::BillingCreateMerchantComplete(store_id) => {
+                CreateStoreOperationStage::BillingCreateMerchantStart(store_id) => {
                     debug!("Reverting merchant, store_id: {}", store_id);
 
                     Box::new(
@@ -368,7 +377,7 @@ impl StoreServiceImpl {
 
         fut.then(|res| match res {
             Ok(_) => Ok((self, ())),
-            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+            Err(_) => Err((self, format_err!("Order service create_revert error occurred."))),
         })
     }
 

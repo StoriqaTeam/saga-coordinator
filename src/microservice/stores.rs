@@ -31,6 +31,7 @@ pub trait StoresMicroservice {
     fn get_moderators(&self, initiator: Initiator) -> ApiFuture<Vec<UserId>>;
     fn deactivate_base_product(&self, initiator: Option<Initiator>, base_product_id: BaseProductId) -> ApiFuture<BaseProduct>;
     fn deactivate_store(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Store>;
+    fn deactivate_store_by_saga_id(&self, initiator: Option<Initiator>, saga_id: SagaId) -> ApiFuture<Store>;
     fn deactivate_product(&self, initiator: Option<Initiator>, product_id: ProductId) -> ApiFuture<Product>;
     fn update_base_product(
         &self,
@@ -62,6 +63,17 @@ impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceI
         Box::new(
             super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
                 e.context("Deactivate store in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
+    fn deactivate_store_by_saga_id(&self, initiator: Option<Initiator>, saga_id: SagaId) -> ApiFuture<Store> {
+        let url = format!("{}/{}/by_saga_id/{}", self.stores_url(), StqModel::Store.to_url(), saga_id);
+        Box::new(
+            super::request::<_, (), _>(self.http_client.clone(), Method::Delete, url, None, initiator.map(Into::into)).map_err(|e| {
+                e.context("Deactivate store by saga ID in stores microservice failed.")
                     .context(Error::HttpClient)
                     .into()
             }),

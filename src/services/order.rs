@@ -657,7 +657,7 @@ impl OrderServiceImpl {
         let orders_microservice = self.orders_microservice.clone();
         let billing_microservice = self.billing_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| match e {
-            CreateOrderOperationStage::OrdersConvertCartComplete(conversion_id) => {
+            CreateOrderOperationStage::OrdersConvertCartStart(conversion_id) => {
                 debug!("Reverting cart convertion, conversion_id: {}", conversion_id);
                 let result = orders_microservice
                     .revert_convert_cart(Initiator::Superadmin, ConvertCartRevert { conversion_id })
@@ -675,21 +675,12 @@ impl OrderServiceImpl {
                 Box::new(result) as Box<Future<Item = (), Error = ()>>
             }
 
-            CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
-                debug!("Reverting create invoice, saga_id: {}", saga_id);
-                let result = billing_microservice
-                    .revert_create_invoice(Initiator::Superadmin, saga_id)
-                    .then(|_| Ok(()));
-
-                Box::new(result) as Box<Future<Item = (), Error = ()>>
-            }
-
             _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
         });
 
         fut.then(|res| match res {
             Ok(_) => Ok((self, ())),
-            Err(_) => Err((self, format_err!("Order service create_revert error occured."))),
+            Err(_) => Err((self, format_err!("Order service create_revert error occurred."))),
         })
     }
 }
