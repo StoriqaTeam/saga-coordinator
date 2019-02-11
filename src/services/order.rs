@@ -675,15 +675,6 @@ impl OrderServiceImpl {
                 Box::new(result) as Box<Future<Item = (), Error = ()>>
             }
 
-            // CreateOrderOperationStage::BillingCreateInvoiceComplete(saga_id) => {
-            //     debug!("Reverting create invoice, saga_id: {}", saga_id);
-            //     let result = billing_microservice
-            //         .revert_create_invoice(Initiator::Superadmin, saga_id)
-            //         .then(|_| Ok(()));
-            //
-            //     Box::new(result) as Box<Future<Item = (), Error = ()>>
-            // }
-            //
             _ => Box::new(future::ok(())) as Box<Future<Item = (), Error = ()>>,
         });
 
