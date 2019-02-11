@@ -303,7 +303,8 @@ impl StoreServiceImpl {
         let delivery_microservice = self.delivery_microservice.clone();
         let fut = iter_ok::<_, ()>(log).for_each(move |e| {
             match e {
-                CreateStoreOperationStage::StoreCreationStart(store_id) => {
+                // TODO: probably pass saga ID on store creation and delete store by saga ID here (requires changes in saga-coordinator and stores microservices).
+                CreateStoreOperationStage::StoreCreationComplete(store_id) => {
                     debug!("Reverting store, store_id: {}", store_id);
                     Box::new(
                         stores_microservice
