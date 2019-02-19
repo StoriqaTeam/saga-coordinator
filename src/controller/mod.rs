@@ -371,6 +371,23 @@ impl Controller for ControllerImpl {
                     }),
             ),
 
+            // POST /base_products/create_with_variants
+            (&Method::Post, Some(Route::BaseProductCreateWithVariants)) => serialize_future(
+                parse_body::<NewBaseProductWithVariants>(req.body())
+                    .map_err(|e| {
+                        FailureError::from(
+                            e.context("Parsing body failed, target: NewBaseProductWithVariants")
+                                .context(Error::Parse),
+                        )
+                    })
+                    .and_then(move |payload| {
+                        store_service
+                            .create_base_product_with_variants(payload)
+                            .map(|(_, base_product)| base_product)
+                            .map_err(|(_, e)| FailureError::from(e.context("Error creating base product with variants occurred.")))
+                    }),
+            ),
+
             // POST /base_products/<base_product_id>/upsert-shipping
             (&Method::Post, Some(Route::BaseProductUpsertShipping(base_product_id))) => serialize_future(
                 parse_body::<NewShipping>(req.body())

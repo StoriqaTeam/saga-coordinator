@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use failure::Error as FailureError;
@@ -8,9 +9,11 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 use hyper::header::Authorization;
 use hyper::Headers;
+use uuid::Uuid;
 
 use stq_types::{
-    BaseProductId, BillingRole, DeliveryRole, OrderRole, ProductId, RoleEntryId, RoleId, SagaId, StoreId, UserId, WarehouseRole,
+    BaseProductId, BillingRole, DeliveryRole, OrderRole, ProductId, Quantity, RoleEntryId, RoleId, SagaId, StoreId, TransactionId, UserId,
+    WarehouseRole,
 };
 
 use stq_static_resources::{
@@ -47,6 +50,7 @@ pub trait StoreService {
         base_product_id: BaseProductId,
         payload: UpdateBaseProduct,
     ) -> ServiceFuture<Box<StoreService>, BaseProduct>;
+    fn create_base_product_with_variants(self, payload: NewBaseProductWithVariants) -> ServiceFuture<Box<StoreService>, BaseProduct>;
 }
 
 pub struct StoreServiceImpl {
@@ -749,6 +753,62 @@ impl StoreServiceImpl {
             })
             .or_else(|(s, e)| future::err((s, parse_validation_errors(e, &["base_product"]))))
     }
+
+    fn after_create_base_product_with_variants(
+        self,
+        base_product_id: BaseProductId,
+        payload: NewBaseProductWithVariants,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+        let store_id = payload.store_id;
+        let stores_microservice = self.stores_microservice.clone();
+        let warehouses_microservice = self.warehouses_microservice.clone();
+
+        let quantity_by_uuid: HashMap<String, Quantity> = payload
+            .variants
+            .into_iter()
+            .flat_map(|p| match (p.product.uuid, p.quantity) {
+                (Some(uuid), Some(quantity)) => Some((uuid, quantity)),
+                _ => None,
+            })
+            .collect();
+
+        let warehouse_id = self
+            .warehouses_microservice
+            .clone()
+            .find_by_store_id(None, store_id)
+            .and_then(move |warehouses| {
+                if warehouses.len() > 1 {
+                    Err(format_err!("store {} has several warehouses", store_id))
+                } else {
+                    warehouses
+                        .into_iter()
+                        .next()
+                        .ok_or(format_err!("store {} has none warehouses", store_id))
+                }
+            })
+            .map(|warehouse| warehouse.id);
+
+        stores_microservice
+            .get_products_by_base_product(base_product_id)
+            .join(warehouse_id)
+            .map(|(products, warehouse_id)| products.into_iter().map(move |p| (p.id, p.uuid, warehouse_id)))
+            .map(|products| futures::stream::iter_ok(products))
+            .flatten_stream()
+            .filter_map(move |(product_id, product_uuid, warehouse_id)| {
+                quantity_by_uuid
+                    .get(&product_uuid)
+                    .map(move |quantity| (product_id, warehouse_id, *quantity))
+            })
+            .for_each(move |(product_id, warehouse_id, quantity)| {
+                warehouses_microservice
+                    .set_product_in_warehouse(Initiator::Superadmin, warehouse_id, product_id, quantity)
+                    .map(|_| ())
+            })
+            .then(|res| match res {
+                Ok(_) => Ok((self, ())),
+                Err(err) => Err((self, err)),
+            })
+    }
 }
 
 fn is_status_change_requires_to_delete_product(initial_status: ModerationStatus, status: ModerationStatus) -> bool {
@@ -964,4 +1024,45 @@ impl StoreService for StoreServiceImpl {
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
     }
+
+    fn create_base_product_with_variants(self, payload: NewBaseProductWithVariants) -> ServiceFuture<Box<StoreService>, BaseProduct> {
+        let stores_microservice = self.stores_microservice.clone();
+        Box::new(
+            fill_uids(payload)
+                .into_future()
+                .and_then(move |payload| {
+                    stores_microservice
+                        .create_base_product_with_variants(None, payload.clone())
+                        .map(|base_product| (base_product, payload))
+                })
+                .then(move |res| match res {
+                    Ok((base_product, payload)) => Ok((self, base_product, payload)),
+                    Err(err) => Err((self, err)),
+                })
+                .and_then(move |(s, base_product, payload)| {
+                    s.after_create_base_product_with_variants(base_product.id, payload)
+                        .then(|res| match res {
+                            Ok((s, _)) => Ok((s, base_product)),
+                            Err((s, e)) => {
+                                warn!("Error after creating base product with variants: {}", e);
+                                Ok((s, base_product))
+                            }
+                        })
+                })
+                .map(|(s, base_product)| (Box::new(s) as Box<StoreService>, base_product))
+                .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
+        )
+    }
+}
+
+fn fill_uids(mut payload: NewBaseProductWithVariants) -> Result<NewBaseProductWithVariants, FailureError> {
+    let parent_uuid = Uuid::parse_str(payload.uuid.as_ref())?;
+    let mut transaction = TransactionId::new(parent_uuid);
+    for product in payload.variants.iter_mut() {
+        product.product.uuid = Some(product.product.uuid.take().filter(|s| !s.is_empty()).unwrap_or_else(|| {
+            transaction = transaction.next();
+            transaction.inner().hyphenated().to_string()
+        }));
+    }
+    Ok(payload)
 }

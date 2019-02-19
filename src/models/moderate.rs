@@ -43,6 +43,7 @@ pub struct BaseProduct {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Product {
+    pub uuid: String,
     pub id: ProductId,
     pub base_product_id: BaseProductId,
     pub is_active: bool,

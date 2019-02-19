@@ -39,6 +39,11 @@ pub trait StoresMicroservice {
         base_product_id: BaseProductId,
         payload: UpdateBaseProduct,
     ) -> ApiFuture<BaseProduct>;
+    fn create_base_product_with_variants(
+        &self,
+        initiator: Option<Initiator>,
+        payload: NewBaseProductWithVariants,
+    ) -> ApiFuture<BaseProduct>;
 }
 
 pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -47,6 +52,28 @@ pub struct StoresMicroserviceImpl<T: 'static + HttpClient + Clone> {
 }
 
 impl<T: 'static + HttpClient + Clone> StoresMicroservice for StoresMicroserviceImpl<T> {
+    fn create_base_product_with_variants(
+        &self,
+        initiator: Option<Initiator>,
+        payload: NewBaseProductWithVariants,
+    ) -> ApiFuture<BaseProduct> {
+        let url = format!("{}/{}/with_variants", self.stores_url(), StqModel::BaseProduct.to_url());
+        Box::new(
+            super::request::<_, NewBaseProductWithVariants, _>(
+                self.http_client.clone(),
+                Method::Post,
+                url,
+                Some(payload),
+                initiator.map(Into::into),
+            )
+            .map_err(|e| {
+                e.context("Create base product with variants in stores microservice failed.")
+                    .context(Error::HttpClient)
+                    .into()
+            }),
+        )
+    }
+
     fn deactivate_product(&self, initiator: Option<Initiator>, product_id: ProductId) -> ApiFuture<Product> {
         let url = format!("{}/{}/{}", self.stores_url(), StqModel::Product.to_url(), product_id);
         Box::new(
