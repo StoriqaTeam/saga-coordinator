@@ -19,6 +19,7 @@ extern crate uuid;
 extern crate validator;
 #[macro_use]
 extern crate sentry;
+extern crate geo;
 
 extern crate stq_api;
 extern crate stq_http;

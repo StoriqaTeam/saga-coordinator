@@ -7,6 +7,7 @@ pub mod moderate;
 pub mod notifications;
 pub mod roles;
 pub mod visibility;
+pub mod warehouses;
 
 pub use self::base_product::*;
 pub use self::create_order::*;
@@ -17,3 +18,4 @@ pub use self::moderate::*;
 pub use self::notifications::*;
 pub use self::roles::*;
 pub use self::visibility::*;
+pub use self::warehouses::*;

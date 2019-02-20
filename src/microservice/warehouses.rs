@@ -29,6 +29,7 @@ pub trait WarehousesMicroservice {
         product_id: ProductId,
         quantity: Quantity,
     ) -> ApiFuture<Stock>;
+    fn find_by_store_id(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Vec<Warehouse>>;
 }
 
 pub struct WarehousesMicroserviceImpl<T: 'static + HttpClient + Clone> {
@@ -107,6 +108,18 @@ impl<T: 'static + HttpClient + Clone> WarehousesMicroservice for WarehousesMicro
                     .context(Error::HttpClient)
                     .into()
             }),
+        )
+    }
+
+    fn find_by_store_id(&self, initiator: Option<Initiator>, store_id: StoreId) -> ApiFuture<Vec<Warehouse>> {
+        let url = format!("{}/warehouses/by-store/{}", self.warehouses_url(), store_id);
+        Box::new(
+            super::request::<_, (), Vec<Warehouse>>(self.http_client.clone(), Method::Get, url, None, initiator.map(Initiator::into))
+                .map_err(|e| {
+                    e.context("Find warehouses in warehouses microservice failed.")
+                        .context(Error::HttpClient)
+                        .into()
+                }),
         )
     }
 }
