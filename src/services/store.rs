@@ -731,7 +731,12 @@ impl StoreServiceImpl {
             })
     }
 
-    fn after_base_product_update(self, base_product_id: BaseProductId) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
+    fn after_base_product_update(
+        self,
+        old_base_product: BaseProduct,
+        base_product_update: UpdateBaseProduct,
+        base_product_id: BaseProductId,
+    ) -> impl Future<Item = (Self, ()), Error = (Self, FailureError)> {
         let stores_microservice = self.stores_microservice.clone();
         let orders_microservice = self.orders_microservice.clone();
         let delivery_microservice = self.delivery_microservice.clone();
@@ -743,9 +748,16 @@ impl StoreServiceImpl {
             })
             .and_then(move |payload| orders_microservice.delete_products_from_all_carts(Some(Initiator::Superadmin), payload))
             .and_then(move |_| {
-                delivery_microservice
-                    .delete_shipping_by_base_product(Some(Initiator::Superadmin), base_product_id)
-                    .then(|_| Ok(()))
+                if let Some(new_currency) = base_product_update.currency {
+                    if new_currency != old_base_product.currency {
+                        return Either::A(
+                            delivery_microservice
+                                .delete_shipping_by_base_product(Some(Initiator::Superadmin), base_product_id)
+                                .then(|_| Ok(())),
+                        );
+                    }
+                }
+                Either::B(future::ok(()))
             })
             .then(|res| match res {
                 Ok(_) => Ok((self, ())),
@@ -1012,14 +1024,25 @@ impl StoreService for StoreServiceImpl {
         base_product_id: BaseProductId,
         payload: UpdateBaseProduct,
     ) -> ServiceFuture<Box<StoreService>, BaseProduct> {
+        let stores_microservice = self.stores_microservice.clone();
+        let payload_clone = payload.clone();
         Box::new(
             self.stores_microservice
-                .update_base_product(None, base_product_id, payload)
+                .get_base_product(base_product_id, Visibility::Active)
+                .and_then(move |old_base_product| old_base_product.ok_or(format_err!("Could not find base product {}", base_product_id)))
+                .and_then(move |old_base_product| {
+                    stores_microservice
+                        .update_base_product(None, base_product_id, payload)
+                        .map(move |base_product| (old_base_product, base_product))
+                })
                 .then(move |res| match res {
-                    Ok(base_product) => Ok((self, base_product)),
+                    Ok((old_base_product, base_product)) => Ok((self, old_base_product, base_product)),
                     Err(err) => Err((self, err)),
                 })
-                .and_then(move |(s, base_product)| s.after_base_product_update(base_product_id).map(|(s, _)| (s, base_product)))
+                .and_then(move |(s, old_base_product, base_product)| {
+                    s.after_base_product_update(old_base_product, payload_clone, base_product_id)
+                        .map(|(s, _)| (s, base_product))
+                })
                 .map(|(s, base_product)| (Box::new(s) as Box<StoreService>, base_product))
                 .or_else(|(s, e)| future::err((Box::new(s) as Box<StoreService>, e))),
         )
